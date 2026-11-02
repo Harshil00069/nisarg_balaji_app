@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_face_detection_balaji_enterprise/src/api_manager/api_implementor.dart';
 import 'package:flutter_face_detection_balaji_enterprise/src/constant/app_dialogs.dart';
 import 'package:flutter_face_detection_balaji_enterprise/src/constant/common_utils.dart';
 import 'package:flutter_face_detection_balaji_enterprise/src/constant/database_helper.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:get/get_core/src/get_main.dart';
+import 'package:get/get_navigation/src/extension_navigation.dart';
+import 'package:get/get_rx/src/rx_types/rx_types.dart';
+import 'package:get/get_state_manager/src/rx_flutter/rx_obx_widget.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 class MeasureMapScreen extends StatefulWidget {
@@ -26,6 +31,8 @@ class _MeasureMapScreenState extends State<MeasureMapScreen> {
   bool _isOnTapMeasure = false;
 
   MapType mapType = MapType.hybrid;
+
+  RxBool isSubmitLoading = false.obs;
 
   @override
   void initState() {
@@ -206,13 +213,9 @@ class _MeasureMapScreenState extends State<MeasureMapScreen> {
             ElevatedButton(
               onPressed: () async {
                 Navigator.pop(context);
-                // widget.onAreaMeasureDone( polygonPoints);
+                widget.onAreaMeasureDone( polygonPoints);
 
-                await DatabaseHelper().saveAdminRange(
-                rangeId: 1,
-                name: 'Office',
-                rangePoints: polygonPoints,
-                );
+              await  setLocationDataByCompanyListApi(latLongList: polygonPoints);
               },
               child: const Text(
                 'Save',
@@ -232,6 +235,51 @@ class _MeasureMapScreenState extends State<MeasureMapScreen> {
     });
   }
 
+  Future<void> setLocationDataByCompanyListApi({
+    required List<LatLng> latLongList,
+  }) async {
+    isSubmitLoading.value = true;
+
+    try {
+      if (latLongList.isEmpty) {
+        showToast(message: "Location list is empty");
+        return;
+      }
+
+      final DatabaseHelper databaseHelper = DatabaseHelper();
+      final user = await databaseHelper.fetchStoredUser();
+
+      final String companyId = user.companyId;
+      final String token = user.token;
+
+      final List<Map<String, dynamic>> locationJsonDataList =
+      latLongList.map((item) {
+        return {
+          "lat": item.latitude,
+          "long": item.longitude,
+        };
+      }).toList();
+
+      final response =
+      await ApiImplementor.setLocationByCompanyApiImplementer(
+        companyId: companyId,
+        authToken: token,
+        jsonDetail: locationJsonDataList,
+      );
+
+      if (response.status == 1) {
+        Get.back();
+        showToast(message: response.message,type: Toast.success);
+      }else{
+        showToast(message: response.message,type: Toast.info);
+      }
+    } catch (e) {
+      debugPrint("Set Location API Error: $e");
+      showToast(message: "Something went wrong");
+    } finally {
+      isSubmitLoading.value = false;
+    }
+  }
 
 
   @override
@@ -246,46 +294,80 @@ class _MeasureMapScreenState extends State<MeasureMapScreen> {
                   onPressed: unDo,
                   icon: Icon(Icons.undo),
                 )
-              : SizedBox(),
-          IconButton(tooltip: 'Save', onPressed: _save, icon: Icon(Icons.done)),
+              : const SizedBox(),
+          IconButton(tooltip: 'Save', onPressed: _save, icon: const Icon(Icons.done)),
           _buildMapTypeButton(),
         ],
       ),
       body: SafeArea(
         child: _isLoading
-            ? Center(child: CircularProgressIndicator())
-            : Column(
-                children: [
-                  Expanded(
-                    child: GoogleMap(
-                      onMapCreated: (controller) => mapController = controller,
-                      mapType: mapType,
-                      initialCameraPosition: CameraPosition(
-                        target:
-                            currentLocation ?? LatLng(22.2470433, 70.7972683),
-                        zoom: 19.151926040649414,
-                      ),
-                      myLocationEnabled: true,
-                      myLocationButtonEnabled: true,
-                      onTap: (position) => _onTapPoint(position),
-                      markers: markers,
-                      polygons: polygonPoints.length >= 3
-                          ? {
-                              Polygon(
-                                polygonId: PolygonId("area"),
-                                points: polygonPoints,
-                                strokeColor: Colors.green,
-                                strokeWidth: 2,
-                                fillColor: Colors.green.shade100,
-                              ),
-                            }
-                          : {},
+            ? const Center(child: CircularProgressIndicator())
+            : Stack(children: [
+          Column(
+            children: [
+              Expanded(
+                child: GoogleMap(
+                  onMapCreated: (controller) => mapController = controller,
+                  mapType: mapType,
+                  initialCameraPosition: CameraPosition(
+                    target:
+                    currentLocation ?? LatLng(22.2470433, 70.7972683),
+                    zoom: 19.151926040649414,
+                  ),
+                  myLocationEnabled: true,
+                  myLocationButtonEnabled: true,
+                  onTap: (position) => _onTapPoint(position),
+                  markers: markers,
+                  polygons: polygonPoints.length >= 3
+                      ? {
+                    Polygon(
+                      polygonId: PolygonId("area"),
+                      points: polygonPoints,
+                      strokeColor: Colors.green,
+                      strokeWidth: 2,
+                      fillColor: Colors.green.shade100,
+                    ),
+                  }
+                      : {},
+                ),
+              ),
+              _buildOnTapMeasureButton(),
+              _buildActionButton(),
+            ],
+          ),
+          Obx(() => isSubmitLoading.value
+              ? Positioned.fill(
+            child: Container(
+              color: Colors.black.withValues(alpha: 0.5),
+              child: const Center(
+                child: Card(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 30,
+                      vertical: 24,
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CircularProgressIndicator(),
+                        SizedBox(height: 16),
+                        Text(
+                          'Please wait...',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  _buildOnTapMeasureButton(),
-                  _buildActionButton(),
-                ],
+                ),
               ),
+            ),
+          )
+              : const SizedBox.shrink(),
+          ),
+        ],),
       ),
     );
   }

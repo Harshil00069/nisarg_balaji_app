@@ -206,13 +206,14 @@ class _LoginScreenState extends State<LoginScreen> {
         loading = false;
       });
       if (result?.status == 0) {
-        print("DD=> ${result!.data!.token}");
         final databaseHelper = DatabaseHelper();
         if (result != null && result.data != null) {
           await databaseHelper.createEmpInfoTable(
             userId: result.data!.userId?.toInt() ?? 0,
             empId: result.data!.userId?.toInt() ?? 0,
+            companyId: result.data!.companyId?.toInt() ?? 0,
             baseUrl: "",
+            columnToken: result.data!.token??""
           );
         }
         final prefs = await SharedPreferences.getInstance();

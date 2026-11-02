@@ -2,6 +2,7 @@
 import 'package:flutter/foundation.dart'
     show kDebugMode, debugPrint, debugPrintStack;
 import 'package:geolocator/geolocator.dart';
+import 'package:location/location.dart' as loc;
 import 'package:permission_handler/permission_handler.dart';
 
 import 'app_dialogs.dart';
@@ -35,80 +36,51 @@ class PermissionUtil {
   //   }
   // }
 
-  static Future<bool> checkLocationPermission() async {
-    var checkLocationEnable = await Geolocator.isLocationServiceEnabled();
-    if (!checkLocationEnable) {
-      showToast(message: 'Please Turn ON Your Location');
-      return false;
-    }
-
-    var permission = await Geolocator.checkPermission();
-
-    if (permission == LocationPermission.denied) {
-      bool checkPermission = false;
-      await Geolocator.requestPermission().then((value) {
-        if (value == LocationPermission.denied ||
-            value == LocationPermission.deniedForever) {
-          checkPermission = false;
-        } else {
-          checkPermission = true;
-        }
-      });
-      return checkPermission;
-    } else if (permission == LocationPermission.deniedForever) {
-      Geolocator.openAppSettings();
-      return false;
-    } else {
-      return true;
-    }
-  }
-
-
   static Future<bool> requestEnableLocation() async {
     try {
-      // 1. Check device GPS status.
-      final bool serviceEnabled =
-      await Geolocator.isLocationServiceEnabled();
+      // 1. Check and request device GPS.
+      final location = loc.Location();
 
-      debugPrint('[LOCATION] GPS enabled: $serviceEnabled');
+      bool serviceEnabled = await location.serviceEnabled();
 
       if (!serviceEnabled) {
-        debugPrint('[LOCATION] Returning false: GPS is disabled.');
+        // On Android, request the system enable-location popup.
+        serviceEnabled = await location.requestService();
+      }
+
+      if (!serviceEnabled) {
+        showToast(message: 'Please turn ON your Location');
         return false;
       }
 
-      // 2. Check app permission without requesting a dialog.
-      final LocationPermission permission = await Geolocator.checkPermission();
-
-      debugPrint('[LOCATION] Permission: $permission');
+      // 2. Check app location permission.
+      LocationPermission permission =
+      await Geolocator.checkPermission();
 
       if (permission == LocationPermission.denied) {
-        bool checkPermission = false;
-        await Geolocator.requestPermission().then((value) {
-          if (value == LocationPermission.denied ||
-              value == LocationPermission.deniedForever) {
-            checkPermission = false;
-          } else {
-            checkPermission = true;
-          }
-        });
-        return checkPermission;
+        permission = await Geolocator.requestPermission();
       }
-      // 3. Confirm GPS remains enabled.
-      final bool gpsStillEnabled =
-      await Geolocator.isLocationServiceEnabled();
 
-      debugPrint('[LOCATION] Final GPS status: $gpsStillEnabled');
+      if (permission == LocationPermission.deniedForever) {
+        showToast(message: 'Please allow location permission');
 
-      return gpsStillEnabled;
+        await Geolocator.openAppSettings();
+        return false;
+      }
+
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.unableToDetermine) {
+        return false;
+      }
+
+      // 3. Verify GPS is actually enabled.
+      return await Geolocator.isLocationServiceEnabled();
     } catch (e, stackTrace) {
-      debugPrint('[LOCATION] Error: $e');
-      debugPrintStack(stackTrace: stackTrace);
+      debugPrint('Request location error: $e');
+      // debugPrintStack(stackTrace: stackTrace);
       return false;
     }
   }
-
-
 
   static Future<bool> requestBackgroundPermission() async {
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();

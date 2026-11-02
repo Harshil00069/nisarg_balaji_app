@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_face_detection_balaji_enterprise/src/app_module/attendance_management_erp/model/location_data_model.dart';
+import 'package:flutter_face_detection_balaji_enterprise/src/app_module/attendance_management_erp/model/location_track_by_company_data_model.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
@@ -43,6 +44,8 @@ class DatabaseHelper {
 
   static const String columnEmpId = 'loginEmpId';
   static const String columnUserId = 'loginUserId';
+  static const String columnCompanyId = 'companyId';
+  static const String columnToken = 'token';
   static const String columnBaseURL = 'baseUrl';
 
   // ============================================================
@@ -52,7 +55,13 @@ class DatabaseHelper {
   /// This table stores the last location that was processed.
   ///
   /// We use this location to calculate distance before deciding
-  /// whether another location/API request is required
+  /// whether another location/API request is required.
+  static const String locationTrackingStateTable = 'locationTrackingState';
+
+  static const String trackingStateId = 'id';
+  static const String trackingStateLatitude = 'latitude';
+  static const String trackingStateLongitude = 'longitude';
+  static const String trackingStateUpdatedAt = 'updatedAt';
 
 
   // admin save range
@@ -69,19 +78,6 @@ class DatabaseHelper {
   static const String rangeExitLatitude = 'latitude';
   static const String rangeExitLongitude = 'longitude';
   static const String rangeExitCreatedAt = 'created_at';
-
-
-  // for offline database
-  static const String tablePendingRangeEvents =
-      'pending_range_events';
-
-  static const String pendingRangeEventId = 'id';
-  static const String pendingRangeEmployeeId = 'employee_id';
-  static const String pendingRangeRangeId = 'range_id';
-  static const String pendingRangeEventType = 'event_type';
-  static const String pendingRangeLatitude = 'latitude';
-  static const String pendingRangeLongitude = 'longitude';
-  static const String pendingRangeCreatedAt = 'created_at';
 
   // ============================================================
   // DATABASE INSTANCE
@@ -170,7 +166,6 @@ class DatabaseHelper {
     await _createUserDetailTable(db);
     await _createAdminRangeTable(db);
     await _createRangeExitStateTable(db);
-    await _createPendingRangeEventsTable(db);
     // await _createLocationTable(db);
     // await _createLocationTrackingStateTable(db);
 
@@ -180,28 +175,28 @@ class DatabaseHelper {
   // CREATE LOCATION TABLE
   // ============================================================
 
-  // Future<void> _createLocationTable(Database db) async {
-  //   final columns = {
-  //     columnId: 'INTEGER PRIMARY KEY AUTOINCREMENT',
-  //     columnName: 'TEXT NOT NULL',
-  //     columnLatitude: 'TEXT NOT NULL',
-  //     columLongitude: 'TEXT NOT NULL',
-  //     columCreatedAt: 'TEXT NOT NULL',
-  //     columBatteryLevel: 'TEXT NOT NULL',
-  //   };
-  //
-  //   await createTableIfNotExists(
-  //     table,
-  //     columns,
-  //     databaseConfig: db,
-  //   );
-  //
-  //   if (kDebugMode) {
-  //     debugPrint(
-  //       'Table verified: $table',
-  //     );
-  //   }
-  // }
+/*  Future<void> _createLocationTable(Database db) async {
+    final columns = {
+      columnId: 'INTEGER PRIMARY KEY AUTOINCREMENT',
+      columnName: 'TEXT NOT NULL',
+      columnLatitude: 'TEXT NOT NULL',
+      columLongitude: 'TEXT NOT NULL',
+      columCreatedAt: 'TEXT NOT NULL',
+      columBatteryLevel: 'TEXT NOT NULL',
+    };
+
+    await createTableIfNotExists(
+      table,
+      columns,
+      databaseConfig: db,
+    );
+
+    if (kDebugMode) {
+      debugPrint(
+        'Table verified: $table',
+      );
+    }
+  }*/
 
 
   Future<void> _createAdminRangeTable(Database db) async {
@@ -229,7 +224,7 @@ class DatabaseHelper {
   Future<void> saveAdminRange({
     required int rangeId,
     required String name,
-    required List<LatLng> rangePoints,
+    required List<LocationDatum> rangePoints,
   }) async {
     try {
       final db = await database;
@@ -249,8 +244,8 @@ class DatabaseHelper {
             {
               columnRangeId: rangeId,
               columnName: name,
-              columnLatitude: point.latitude.toString(),
-              columnLongitude: point.longitude.toString(),
+              columnLatitude: point.lat.toString(),
+              columnLongitude: point.long.toString(),
               columnCreatedAt: DateTime.now().toIso8601String(),
             },
           );
@@ -355,149 +350,33 @@ class DatabaseHelper {
       debugPrintStack(stackTrace: stackTrace);
     }
   }
-
-//   // ============================================================
-// // CREATE PENDING RANGE EVENTS TABLE
-// // ============================================================
-//
-  Future<void> _createPendingRangeEventsTable(
-      Database db,
-      ) async {
-    final columns = {
-      pendingRangeEventId: 'INTEGER PRIMARY KEY AUTOINCREMENT',
-      pendingRangeEmployeeId: 'TEXT NOT NULL',
-      pendingRangeRangeId: 'INTEGER NOT NULL',
-      pendingRangeEventType: 'TEXT NOT NULL',
-      pendingRangeLatitude: 'REAL NOT NULL',
-      pendingRangeLongitude: 'REAL NOT NULL',
-      pendingRangeCreatedAt: 'TEXT NOT NULL',
-    };
-
-    await createTableIfNotExists(
-      tablePendingRangeEvents,
-      columns,
-      databaseConfig: db,
-    );
-
-    if (kDebugMode) {
-      debugPrint(
-        'Table verified: $tablePendingRangeEvents',
-      );
-    }
-  }
-
-  // ============================================================
-// INSERT PENDING RANGE EVENT
-// ============================================================
-
-  Future<int> insertPendingRangeEvent({
-    required String employeeId,
-    required int rangeId,
-    required String eventType, // 'exit' or 'return'
-    required double latitude,
-    required double longitude,
-  }) async {
-    if (eventType != 'exit' && eventType != 'return') {
-      throw ArgumentError(
-        'eventType must be exit or return',
-      );
-    }
-
-    final db = await database;
-
-    await _createPendingRangeEventsTable(db);
-
-    final id = await db.insert(
-      tablePendingRangeEvents,
-      {
-        pendingRangeEmployeeId: employeeId,
-        pendingRangeRangeId: rangeId,
-        pendingRangeEventType: eventType,
-        pendingRangeLatitude: latitude,
-        pendingRangeLongitude: longitude,
-        pendingRangeCreatedAt: DateTime.now().toIso8601String(),
-      },
-    );
-
-    if (kDebugMode) {
-      debugPrint(
-        'Pending event saved: id=$id, '
-            'employee=$employeeId, range=$rangeId, '
-            'event=$eventType',
-      );
-    }
-
-    return id;
-  }
-
-  // ============================================================
-// DELETE ONE SYNCED PENDING EVENT
-// ============================================================
-
-  Future<int> deletePendingRangeEvent(int eventId) async {
-    final db = await database;
-
-    return db.delete(
-      tablePendingRangeEvents,
-      where: '$pendingRangeEventId = ?',
-      whereArgs: [eventId],
-    );
-  }
-
-  Future<int> clearPendingRangeEvents() async {
-    final db = await database;
-
-    return await db.delete(tablePendingRangeEvents);
-  }
-
-
-  Future<bool> hasPendingRangeEvent({
-    required String employeeId,
-    required int rangeId,
-  }) async {
-    final db = await database;
-
-    final result = await db.query(
-      'pending_range_events',
-      columns: ['id'],
-      where: 'employee_id = ? AND range_id = ?',
-      whereArgs: [employeeId, rangeId],
-      limit: 1,
-    );
-
-    return result.isNotEmpty;
-  }
-
-  Future<String?> getLastPendingRangeEventType({
-    required String employeeId,
-    required int rangeId,
-  }) async {
-    final db = await database;
-
-    final result = await db.query(
-      'pending_range_events',
-      columns: ['event_type'],
-      where: 'employee_id = ? AND range_id = ?',
-      whereArgs: [employeeId, rangeId],
-      orderBy: 'id DESC',
-      limit: 1,
-    );
-
-    if (result.isEmpty) {
-      return null;
-    }
-
-    return result.first['event_type'] as String?;
-  }
-
-  Future<List<Map<String, dynamic>>> getPendingRangeEvents() async {
-    final db = await database;
-
-    return await db.query(
-      'pending_range_events',
-      orderBy: 'id ASC',
-    );
-  }
+  // Future<void> saveActiveRangeExit({
+  //   required String employeeId,
+  //   required int rangeId,
+  //   required double latitude,
+  //   required double longitude,
+  // }) async {
+  //   final db = await database;
+  //
+  //   await db.transaction((txn) async {
+  //     final existing = await txn.query(
+  //       tableRangeExitState,
+  //       where: '$rangeExitEmployeeId = ? AND $columnRangeId = ?',
+  //       whereArgs: [employeeId, rangeId],
+  //       limit: 1,
+  //     );
+  //
+  //     if (existing.isNotEmpty) return;
+  //
+  //     await txn.insert(tableRangeExitState, {
+  //       rangeExitEmployeeId: employeeId,
+  //       columnRangeId: rangeId,
+  //       rangeExitLatitude: latitude,
+  //       rangeExitLongitude: longitude,
+  //       rangeExitCreatedAt: DateTime.now().toIso8601String(),
+  //     });
+  //   });
+  // }
 
   // clear when user come in range
   Future<void> clearActiveRangeExit({
@@ -563,6 +442,8 @@ class DatabaseHelper {
     final columns = {
       columnEmpId: 'TEXT NOT NULL',
       columnUserId: 'TEXT NOT NULL',
+      columnCompanyId: 'TEXT NOT NULL',
+      columnToken: 'TEXT NOT NULL',
       columnBaseURL: 'TEXT',
     };
 
@@ -855,7 +736,9 @@ class DatabaseHelper {
   Future<int> createEmpInfoTable({
     int empId = 0,
     int userId = 0,
+    int companyId = 0,
     String baseUrl = '',
+    String columnToken = '',
   }) async {
     try {
       final db = await database;
@@ -867,9 +750,12 @@ class DatabaseHelper {
       final result = await db.insert(
         userTable,
         LocationUserDataModel(
+          token: columnToken,
+          companyId: '$companyId' ,
           empId: '$empId',
           userId: '$userId',
           baseUrl: baseUrl,
+
         ).toMap(),
         conflictAlgorithm: ConflictAlgorithm.replace,
       );

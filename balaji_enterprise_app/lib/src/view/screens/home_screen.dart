@@ -1,11 +1,11 @@
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:disable_battery_optimizations_latest/disable_battery_optimizations_latest.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_face_detection_balaji_enterprise/src/app_module/area_mesurement/screen/employee_range_map_screen.dart';
 import 'package:flutter_face_detection_balaji_enterprise/src/app_module/attendance_management_erp/background_service/background_service_state.dart';
-import 'package:flutter_face_detection_balaji_enterprise/src/app_module/attendance_management_erp/background_service/flutter_background_service.dart';
 import 'package:flutter_face_detection_balaji_enterprise/src/app_module/attendance_management_erp/custom_widget/battery_optimization_screen.dart';
 import 'package:flutter_face_detection_balaji_enterprise/src/app_module/attendance_management_erp/custom_widget/location_disclosure_screen.dart';
 import 'package:flutter_face_detection_balaji_enterprise/src/app_module/attendance_management_erp/screen/attendance_management_screen.dart';
@@ -23,7 +23,6 @@ import 'package:flutter_face_detection_balaji_enterprise/widgets/primary_title_t
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
-import 'package:get/get_core/src/get_main.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -91,13 +90,14 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     await PermissionUtil.requestNotificationPermission();
-   await checkLocationPermissionCondition();
+   await checkLocationPermissionCondition().then((val){
+     checkService();
+   });
   }
 
   @override
   void initState() {
     super.initState();
-
     initSetup();
   }
 
@@ -465,23 +465,114 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> checkLocationPermissionCondition() async {
+    try {
+      // 1. Check Android
+      if (!Platform.isAndroid) {
+        await BackgroundServiceState.setTrackingEnabled(false);
+        return;
+      }
+
+      await BackgroundServiceState.setTrackingEnabled(true);
+
+      // 2. Check GPS enabled
+      final isLocationEnabled =
+      await PermissionUtil.requestEnableLocation();
+
+      if (!isLocationEnabled) {
+        debugPrint("GPS is disabled");
+        return;
+      }
+
+      // 3. Check location permission
+      LocationPermission permission =
+      await Geolocator.checkPermission();
+
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (permission != LocationPermission.always) {
+        debugPrint("Always location permission not granted");
+
+        if (mounted) {
+          Get.to(
+                () => LocationDisclosureScreen(
+              onSuccessfullyGrantPermission: () async {
+                await checkLocationPermissionMethod();
+              },
+            ),
+          );
+        }
+        return;
+      }
+
+      // 4. Check battery optimization
+      await checkLocationPermissionMethod();
+
+    } catch (e) {
+      debugPrint("Location permission error: $e");
+    }
+  }
+
+  Future<void> checkLocationPermissionMethod() async {
+    await manageBackgroundService('');
+  }
+
+  Future<void> manageBackgroundService(String localStatus) async {
+    try {
+      // if (!Platform.isAndroid) return;
+
+      // Check battery optimization
+      final bool isBatteryOptimizationDisabled =
+          await DisableBatteryOptimizationLatest
+              .isBatteryOptimizationDisabled ??
+              false;
+
+      if (!isBatteryOptimizationDisabled) {
+        debugPrint("Battery optimization is enabled");
+
+        if (mounted) {
+          Get.to(
+                () => BatteryOptimizationScreen(
+              onSuccessfullyGrantPermission: () async {
+                await checkLocationPermissionMethod();
+              },
+            ),
+          );
+        }
+
+        return;
+      }
+
+      // Both permissions granted
+      debugPrint("GPS: Enabled");
+      debugPrint("Location Permission: Always");
+      debugPrint("Battery Optimization: Disabled");
+      debugPrint("All permission checks completed successfully.");
+
+    } catch (e) {
+      debugPrint("Battery permission error: $e");
+    }
+  }
+
+ /* Future<void> checkLocationPermissionCondition() async {
     final isAndroid = Platform.isAndroid;
     const isRelease = kDebugMode;
     // final isSalesUser = dashCtrl.isSalesEmployee.value;
 
     // Employee is NOT eligible for background tracking
 
-    // if (!isAndroid || !isRelease ) {
-    //   await BackgroundServiceState.setTrackingEnabled(false);
-    //   await stopBackgroundService();
-    //   return;
-    // }
-    //
-    // // Employee is eligible
-    // await BackgroundServiceState.setTrackingEnabled(true);
+    if (!isAndroid ) {
+      await BackgroundServiceState.setTrackingEnabled(false);
+      await stopBackgroundService();
+      return;
+    }
+
+    // Employee is eligible
+    await BackgroundServiceState.setTrackingEnabled(true);
 
     final checkLocation = await PermissionUtil.requestEnableLocation();
-    print("permission=> ${checkLocation}");
+
     if (!checkLocation) {
       await stopBackgroundService();
       return;
@@ -489,7 +580,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final permission = await Geolocator.checkPermission();
 
-print("permission=> ${permission}");
     if (permission == LocationPermission.denied ||
         permission == LocationPermission.deniedForever ||
         permission != LocationPermission.always) {
@@ -525,7 +615,6 @@ print("permission=> ${permission}");
           ? await DisableBatteryOptimizationLatest
           .isBatteryOptimizationDisabled ??
           false
-      // ? await OptimizeBattery.isIgnoringBatteryOptimizations()
           : true;
       if (!checkBatteryOptimize) {
         if (mounted) {
@@ -543,14 +632,29 @@ print("permission=> ${permission}");
         // }
       }
     } catch (e) {
-      if (localStatus == "punchNotFound") {
-        // Get.to(() => const AttendanceManagementScreen());
-      } else if (localStatus == "punchFound") {
-        startBackgroundService();
-      } else {
-        stopBackgroundService();
-      }
-      return;
+      // print("EE=> ${e}");
+      // if (localStatus == "punchNotFound") {
+      //   // Get.to(() => const AttendanceManagementScreen());
+      // } else if (localStatus == "punchFound") {
+      //   startBackgroundService();
+      // } else {
+      //   stopBackgroundService();
+      // }
+      // return;
     }
+  }*/
+
+  void checkService() async {
+      bool isRunning = await isBackgroundServiceRunning();
+
+    if (isRunning) {
+      print("Background service is running");
+    } else {
+      print("Background service is stopped");
+    }
+  }
+
+  Future<bool> isBackgroundServiceRunning() async {
+    return await FlutterBackgroundService().isRunning();
   }
 }

@@ -7,9 +7,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_face_detection_balaji_enterprise/src/api_manager/api_config_erp_dio.dart';
 import 'package:flutter_face_detection_balaji_enterprise/src/app_module/attendance_management_erp/model/insert_gps_treking_model.dart';
+import 'package:flutter_face_detection_balaji_enterprise/src/app_module/attendance_management_erp/model/location_data_model.dart';
 import 'package:flutter_face_detection_balaji_enterprise/src/constant/database_helper.dart';
 import 'package:flutter_face_detection_balaji_enterprise/src/constant/permission_dialogs.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:intl/intl.dart';
@@ -34,7 +36,7 @@ const int employeeRangeId = 1;
 final FlutterBackgroundService service = FlutterBackgroundService();
 
 Timer? _locationTimer;
-// bool _isServiceRunning = false;
+bool _isServiceRunning = false;
 bool _isLocationProcessing = false;
 DateTime? _lastGpsDisabledAttemptTime;
 int checkGpsStatus = 0;
@@ -52,11 +54,11 @@ Future<void> initializeService() async {
   );
 
   final FlutterLocalNotificationsPlugin notifications =
-      FlutterLocalNotificationsPlugin();
+  FlutterLocalNotificationsPlugin();
 
   await notifications
       .resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin>()
+      AndroidFlutterLocalNotificationsPlugin>()
       ?.createNotificationChannel(channel);
 
   await service.configure(
@@ -110,7 +112,7 @@ Future<void> stopBackgroundService() async {
     _lastGpsDisabledAttemptTime = null;
 
     service.invoke('stop');
-    // _isServiceRunning = false;
+    _isServiceRunning = false;
 
     if (kDebugMode) debugPrint('Background service stop requested.');
   } catch (e, stackTrace) {
@@ -127,46 +129,24 @@ Future<void> stopBackgroundService() async {
 Future<bool> onStart(ServiceInstance serviceInstance) async {
   DartPluginRegistrant.ensureInitialized();
 
-  if (kDebugMode) {
-    debugPrint('[BG] onStart entered');
-  }
-
-  // Cancel any previous timer in this isolate.
   _locationTimer?.cancel();
   _locationTimer = null;
   _isLocationProcessing = false;
   _lastGpsDisabledAttemptTime = null;
 
   serviceInstance.on('stop').listen((_) {
-    if (kDebugMode) {
-      debugPrint('[BG] Stop event received');
-    }
-
+    if (kDebugMode) debugPrint('Stop event received in background isolate.');
     _locationTimer?.cancel();
     _locationTimer = null;
     serviceInstance.stopSelf();
   });
 
-  // Start the timer.
-  final Timer timer = Timer.periodic(
-    locationCheckInterval,
-    (timer) {
-      if (kDebugMode) {
-        debugPrint('[BG] Timer fired: ${DateTime.now()}');
-      }
-
-      unawaited(_processLocation(serviceInstance, timer));
-    },
-  );
-
+  // Check immediately at service start, then every 30 seconds.
+  final Timer timer = Timer.periodic(locationCheckInterval, (timer) async {
+    await _processLocation(serviceInstance, timer);
+  });
   _locationTimer = timer;
-
-  if (kDebugMode) {
-    debugPrint('[BG] Timer started: $locationCheckInterval');
-  }
-
-  // Run the first location check immediately.
-  await _processLocation(serviceInstance, timer);
+  unawaited(_processLocation(serviceInstance, timer));
 
   return true;
 }
@@ -176,66 +156,80 @@ Future<bool> onStart(ServiceInstance serviceInstance) async {
 // -----------------------------------------------------------------------------
 
 Future<void> _processLocation(
-  ServiceInstance serviceInstance,
-  Timer timer,
-) async {
-  if (kDebugMode) {
-    debugPrint('[BG] Location processing started');
-  }
-
+    ServiceInstance serviceInstance,
+    Timer timer,
+    ) async {
+  // Do not start another location check if the previous one is still running.
   if (_isLocationProcessing) {
-    if (kDebugMode) {
-      debugPrint('[BG] Previous location check still running');
-    }
+    if (kDebugMode) debugPrint('Previous location check is still running; skipped.');
     return;
   }
 
   _isLocationProcessing = true;
 
   try {
+    // 1. Stop if attendance tracking is no longer enabled.
     final trackingEnabled = await BackgroundServiceState.isTrackingEnabled();
-
-    debugPrint('[BG] Tracking enabled: $trackingEnabled');
-
     if (!trackingEnabled) {
       await _stopFromBackground(serviceInstance, timer);
       return;
     }
 
-    final locationEnabled = await Geolocator.isLocationServiceEnabled();
-
-    debugPrint('[BG] Device GPS enabled: $locationEnabled');
-
-    if (!locationEnabled) {
-      debugPrint('[BG] GPS is disabled');
+    // 2. Verify that device location services are enabled.
+    final locationServiceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!locationServiceEnabled) {
+      checkGpsStatus = 0;
+      if (serviceInstance is AndroidServiceInstance) {
+        serviceInstance.setForegroundNotificationInfo(
+          title: 'Location Disabled',
+          content: 'Please enable device location',
+        );
+      }
+      await _sendGpsDisabledHeartbeat();
       return;
     }
 
+    // 3. Verify location permission.
     final hasPermission = await PermissionUtil.requestEnableLocation();
-
-    debugPrint('[BG] Location permission valid: $hasPermission');
-
     if (!hasPermission) {
-      debugPrint('[BG] Location permission check failed');
+      checkGpsStatus = 0;
+      if (serviceInstance is AndroidServiceInstance) {
+        serviceInstance.setForegroundNotificationInfo(
+          title: 'Location Permission Disabled',
+          content: 'Please allow location permission',
+        );
+      }
+      await _sendGpsDisabledHeartbeat();
       return;
     }
 
-    final position = await Geolocator.getCurrentPosition(
+    // 4. Get current GPS location.
+    final Position position = await Geolocator.getCurrentPosition(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.bestForNavigation,
       ),
     );
 
-    debugPrint(
-      '[BG] GPS received: '
-      '${position.latitude}, ${position.longitude}',
-    );
+    checkGpsStatus = 1;
+    _lastGpsDisabledAttemptTime = null;
 
+    if (kDebugMode) {
+      debugPrint(
+        'Current GPS: ${position.latitude}, ${position.longitude}',
+      );
+    }
+
+    // 5. Check the saved admin polygon on EVERY 30-second location tick.
     await _checkEmployeeRange(position);
 
-    debugPrint('[BG] Employee range check completed');
+    if (serviceInstance is AndroidServiceInstance) {
+      serviceInstance.setForegroundNotificationInfo(
+        title: 'Location Active',
+        content: 'Checking employee range',
+      );
+    }
   } catch (e, stackTrace) {
-    debugPrint('[BG] Location processing error: $e');
+    debugPrint('Background location process error: $e');
     debugPrintStack(stackTrace: stackTrace);
   } finally {
     _isLocationProcessing = false;
@@ -247,124 +241,6 @@ Future<void> _processLocation(
 // -----------------------------------------------------------------------------
 
 Future<void> _checkEmployeeRange(Position position) async {
-  final db = DatabaseHelper();
-
-  try {
-    final user = await db.fetchStoredUser();
-    final String employeeId = user.empId;
-
-    if (employeeId.isEmpty || employeeId == '0') return;
-
-    // Check connectivity.
-    final connectivity = await Connectivity().checkConnectivity();
-    final bool isOnline = !connectivity.contains(ConnectivityResult.none);
-
-    // Load the geofence.
-    final List<LatLng> points = await db.fetchAdminRange(employeeRangeId);
-
-    if (points.length < 3) {
-      debugPrint('Invalid geofence polygon.');
-      return;
-    }
-
-    final bool isInside = isInsidePolygon(
-      LatLng(position.latitude, position.longitude),
-      points,
-    );
-
-    // ONLINE: upload pending events before processing this location.
-    if (isOnline) {
-      final bool synced = await BackgroundLocationApi.syncPendingRangeEvents();
-
-      if (!synced) {
-        debugPrint('Pending events remain. Range transition deferred.');
-        return;
-      }
-
-      final bool hasExit = await db.hasActiveRangeExit(
-        employeeId: employeeId,
-        rangeId: employeeRangeId,
-      );
-
-      if (isInside) {
-        if (!hasExit) return;
-
-        await db.clearActiveRangeExit(
-          employeeId: employeeId,
-          rangeId: employeeRangeId,
-        );
-
-        final bool stillHasExit = await db.hasActiveRangeExit(
-          employeeId: employeeId,
-          rangeId: employeeRangeId,
-        );
-
-        if (stillHasExit) {
-          debugPrint('Could not clear online exit state.');
-          return;
-        }
-      }
-
-      // Outside.
-      if (hasExit) return;
-
-      await db.saveActiveRangeExit(
-        employeeId: employeeId,
-        rangeId: employeeRangeId,
-        latitude: position.latitude,
-        longitude: position.longitude,
-      );
-
-      final bool saved = await db.hasActiveRangeExit(
-        employeeId: employeeId,
-        rangeId: employeeRangeId,
-      );
-
-      if (!saved) return;
-    }
-
-    // OFFLINE: queue range transitions.
-    // The pending table must track the latest transition type
-    // for this employee/range to avoid duplicate events.
-    final String? lastEvent = await db.getLastPendingRangeEventType(
-      employeeId: employeeId,
-      rangeId: employeeRangeId,
-    );
-
-    if (isInside) {
-      if (lastEvent == 'exit') {
-        await db.insertPendingRangeEvent(
-          employeeId: employeeId,
-          rangeId: employeeRangeId,
-          eventType: 'return',
-          latitude: position.latitude,
-          longitude: position.longitude,
-        );
-
-        debugPrint('Offline return event queued.');
-      }
-      return;
-    }
-
-    // Outside: only queue an exit if the latest state isn't already exit.
-    if (lastEvent == 'exit') return;
-
-    await db.insertPendingRangeEvent(
-      employeeId: employeeId,
-      rangeId: employeeRangeId,
-      eventType: 'exit',
-      latitude: position.latitude,
-      longitude: position.longitude,
-    );
-
-    debugPrint('Offline exit event queued.');
-  } catch (e, stackTrace) {
-    debugPrint('Range check error: $e');
-    debugPrintStack(stackTrace: stackTrace);
-  }
-}
-
-/*Future<void> _checkEmployeeRange(Position position) async {
   final DatabaseHelper databaseHelper = DatabaseHelper();
 
   try {
@@ -488,7 +364,7 @@ Future<void> _checkEmployeeRange(Position position) async {
     debugPrint('Employee range check error: $e');
     debugPrintStack(stackTrace: stackTrace);
   }
-}*/
+}
 
 /// Returns true if [point] is inside the polygon.
 /// Polygon points must be stored in drawing order.
@@ -504,8 +380,10 @@ bool isInsidePolygon(LatLng point, List<LatLng> polygon) {
     final double xj = polygon[j].latitude;
     final double yj = polygon[j].longitude;
 
-    final bool crosses = ((yi > point.longitude) != (yj > point.longitude)) &&
-        (point.latitude < (xj - xi) * (point.longitude - yi) / (yj - yi) + xi);
+    final bool crosses =
+        ((yi > point.longitude) != (yj > point.longitude)) &&
+            (point.latitude <
+                (xj - xi) * (point.longitude - yi) / (yj - yi) + xi);
 
     if (crosses) inside = !inside;
     j = i;
@@ -549,15 +427,15 @@ Future<void> _sendGpsDisabledHeartbeat() async {
 // -----------------------------------------------------------------------------
 
 Future<void> _stopFromBackground(
-  ServiceInstance serviceInstance,
-  Timer timer,
-) async {
+    ServiceInstance serviceInstance,
+    Timer timer,
+    ) async {
   timer.cancel();
   _locationTimer = null;
   _isLocationProcessing = false;
   _lastGpsDisabledAttemptTime = null;
   serviceInstance.stopSelf();
-  // _isServiceRunning = false;
+  _isServiceRunning = false;
 
   if (kDebugMode) debugPrint('Background service stopped: tracking disabled.');
 }
@@ -569,7 +447,7 @@ Future<void> _stopFromBackground(
 class BackgroundLocationApi {
   /// Sends the current location when internet is available. If offline, it saves
   /// the location in the existing location table and returns true if saved.
-  /* static Future<bool> processLocation({
+  static Future<bool> processLocation({
     required Position position,
     required int gpsStatus,
   }) async {
@@ -646,210 +524,7 @@ class BackgroundLocationApi {
     }
 
     return insertedId > 0;
-  }*/
-
- static Future<bool> syncPendingRangeEvents() async {
-    final db = DatabaseHelper();
-
-    try {
-      final connectivity = await Connectivity().checkConnectivity();
-
-      if (connectivity.contains(ConnectivityResult.none)) {
-        return false;
-      }
-
-      final user = await db.fetchStoredUser();
-
-      final events = await db.getPendingRangeEvents();
-
-      if (events.isEmpty) return true;
-
-      for (final event in events) {
-        final bool uploaded = await insertTrackDetailApi(
-          baseURL: user.baseUrl,
-          hREmployeeId: user.empId,
-          hRUserId: user.userId,
-          latitude: event['latitude'].toString(),
-          longitude: event['longitude'].toString(),
-          gpsStatus: '1',
-          batteryStatus: '0',
-          network: '1',
-          datetime: event['createdAt'].toString(),
-          address: 'Range ${event['eventType']}',
-        );
-
-        if (!uploaded) {
-          debugPrint('Pending range event upload failed.');
-          return false;
-        }
-
-        // await db.deletePendingRangeEvent(event['id'] as int);
-        final eventId = event[DatabaseHelper.pendingRangeEventId];
-
-        if (eventId is! int) {
-          debugPrint('Invalid pending event ID: $eventId');
-          return false;
-        }
-
-        final deletedRows = await db.deletePendingRangeEvent(eventId);
-
-        debugPrint('Event ID: $eventId, deleted rows: $deletedRows');
-
-        if (deletedRows != 1) {
-          debugPrint('Pending event was not deleted.');
-          return false;
-        }
-      }
-
-      debugPrint('All pending range events uploaded.');
-      return true;
-    } catch (e, stackTrace) {
-      debugPrint('Pending range sync error: $e');
-      debugPrintStack(stackTrace: stackTrace);
-      return false;
-    }
   }
-
-/*  static Future<bool> processLocation({
-    required Position position,
-    required int gpsStatus,
-  }) async {
-    final DatabaseHelper databaseHelper = DatabaseHelper();
-    final user = await databaseHelper.fetchStoredUser();
-
-    if (user.userId == '0' || user.empId == '0') {
-      if (kDebugMode) {
-        debugPrint('Invalid stored user information.');
-      }
-      return false;
-    }
-
-    int battery = 0;
-    String address = '';
-
-    try {
-      battery = await Battery().batteryLevel;
-    } catch (_) {}
-
-    try {
-      final placemarks = await placemarkFromCoordinates(
-        position.latitude,
-        position.longitude,
-      );
-
-      if (placemarks.isNotEmpty) {
-        final place = placemarks.first;
-        address = '${place.street}, ${place.subLocality}, '
-            '${place.locality}, ${place.administrativeArea}';
-      }
-    } catch (_) {
-      address = 'No address found';
-    }
-
-    final String now = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
-
-    final connectivity = await Connectivity().checkConnectivity();
-    final bool isOnline = !connectivity.contains(ConnectivityResult.none);
-
-    // Helper to save a GPS record locally.
-    Future<bool> saveLocationLocally() async {
-      final int insertedId = await databaseHelper.insert(
-        LocationDataModel(
-          batteryLevel: battery.toString(),
-          name: address.isEmpty ? 'Offline' : address,
-          longitude: position.longitude.toString(),
-          latitude: position.latitude.toString(),
-          createdAt: now,
-        ).toMap(),
-      );
-
-      return insertedId > 0;
-    }
-
-    // OFFLINE: save the current GPS location locally.
-    if (!isOnline) {
-      final bool saved = await saveLocationLocally();
-
-      if (kDebugMode) {
-        debugPrint(
-          saved
-              ? 'Offline: location saved locally.'
-              : 'Offline: location save failed.',
-        );
-      }
-
-      return saved;
-    }
-
-    // ONLINE: upload previously saved locations FIRST.
-    try {
-      final List<Map<String, dynamic>> pendingLocations =
-          await databaseHelper.getPendingRangeEvents();
-
-      for (final record in pendingLocations) {
-        // Adjust these keys to match your actual LocationDataModel.toMap().
-        final String latitude = record['latitude'].toString();
-        final String longitude = record['longitude'].toString();
-        final String batteryStatus = record['batteryLevel']?.toString() ?? '0';
-        final String pendingAddress = record['name']?.toString() ?? '';
-        final String datetime = record['createdAt']?.toString() ?? now;
-
-        final bool uploaded = await insertTrackDetailApi(
-          baseURL: user.baseUrl,
-          hREmployeeId: user.empId,
-          hRUserId: user.userId,
-          longitude: longitude,
-          latitude: latitude,
-          gpsStatus: gpsStatus.toString(),
-          batteryStatus: batteryStatus,
-          network: '1',
-          datetime: datetime,
-          address: pendingAddress,
-        );
-
-        if (!uploaded) {
-          // Stop here. Keep this and subsequent records for retry.
-          if (kDebugMode) {
-            debugPrint('Pending upload failed. Current upload stopped.');
-          }
-
-          // Save the current GPS position for a future retry.
-          await saveLocationLocally();
-          return false;
-        }
-
-        // Delete a pending record ONLY after successful upload.
-        await databaseHelper.deletePendingRangeEvent(record['id']);
-      }
-    } catch (e, stackTrace) {
-      debugPrint('Pending location sync error: $e');
-      debugPrintStack(stackTrace: stackTrace);
-
-      await saveLocationLocally();
-      return false;
-    }
-
-    // All pending records uploaded. Now upload the current location.
-    final bool success = await insertTrackDetailApi(
-      baseURL: user.baseUrl,
-      hREmployeeId: user.empId,
-      hRUserId: user.userId,
-      longitude: position.longitude.toString(),
-      latitude: position.latitude.toString(),
-      gpsStatus: gpsStatus.toString(),
-      batteryStatus: battery.toString(),
-      network: '1',
-      datetime: now,
-      address: address,
-    );
-
-    if (!success) {
-      // Keep the current location for retry if the API fails.
-      await saveLocationLocally();
-    }
-
-    return success;
-  }*/
 
   /// Reports GPS unavailable, no more than once every 10 minutes while enabled.
   static Future<bool> processGpsDisabledLocation() async {

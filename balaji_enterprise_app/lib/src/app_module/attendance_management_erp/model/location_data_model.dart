@@ -38,25 +38,33 @@ class LocationDataModel {
 class LocationUserDataModel {
   final String empId;
   final String userId;
+  final String companyId;
   final String baseUrl;
+  final String token;
 
   LocationUserDataModel({
     required this.empId,
     required this.userId,
+    required this.companyId,
     required this.baseUrl,
+    required this.token,
   });
 
   factory LocationUserDataModel.fromMap(Map<String, dynamic> json) =>
       LocationUserDataModel(
         empId: json["loginEmpId"] ?? "0",
         userId: json["loginUserId"] ?? "0",
+        companyId: json["companyId"] ?? "0",
         baseUrl: json["baseUrl"] ?? "",
+        token: json["token"] ?? "",
       );
 
   Map<String, dynamic> toMap() => {
     "loginEmpId": empId,
     "loginUserId": userId,
     "baseUrl": baseUrl,
+    "companyId": companyId,
+    "token": token,
   };
 }
 
