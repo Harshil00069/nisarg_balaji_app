@@ -19,7 +19,7 @@ class DatabaseHelper {
   // ============================================================
 
   static const String _databaseName = 'common_database.db';
-  static const int _databaseVersion = 8;
+  static const int _databaseVersion = 9;
 
   // ============================================================
   // LOCATION TABLE
@@ -78,6 +78,22 @@ class DatabaseHelper {
   static const String rangeExitLatitude = 'latitude';
   static const String rangeExitLongitude = 'longitude';
   static const String rangeExitCreatedAt = 'created_at';
+
+  // ============================================================
+  // PENDING RANGE EVENTS TABLE
+  // ============================================================
+
+  static const String tablePendingRangeEvents = 'pending_range_events';
+  static const String pendingEventId = 'id';
+  static const String pendingEventEmployeeId = 'employee_id';
+  static const String pendingEventRangeId = 'range_id';
+  static const String pendingEventLatitude = 'latitude';
+  static const String pendingEventLongitude = 'longitude';
+  static const String pendingEventIsUserOut = 'is_user_out';
+  static const String pendingEventGpsStatus = 'gps_status';
+  static const String pendingEventBatteryStatus = 'battery_status';
+  static const String pendingEventAddress = 'address';
+  static const String pendingEventCreatedAt = 'created_at';
 
   // ============================================================
   // DATABASE INSTANCE
@@ -166,6 +182,7 @@ class DatabaseHelper {
     await _createUserDetailTable(db);
     await _createAdminRangeTable(db);
     await _createRangeExitStateTable(db);
+    await _createPendingRangeEventsTable(db);
     // await _createLocationTable(db);
     // await _createLocationTrackingStateTable(db);
 
@@ -281,6 +298,99 @@ class DatabaseHelper {
   }
 
 
+
+  Future<void> _createPendingRangeEventsTable(Database db) async {
+    final columns = {
+      pendingEventId: 'INTEGER PRIMARY KEY AUTOINCREMENT',
+      pendingEventEmployeeId: 'TEXT NOT NULL',
+      pendingEventRangeId: 'INTEGER NOT NULL',
+      pendingEventLatitude: 'REAL NOT NULL',
+      pendingEventLongitude: 'REAL NOT NULL',
+      pendingEventIsUserOut: 'INTEGER NOT NULL',
+      pendingEventGpsStatus: 'INTEGER NOT NULL DEFAULT 1',
+      pendingEventBatteryStatus: "TEXT NOT NULL DEFAULT '0'",
+      pendingEventAddress: "TEXT NOT NULL DEFAULT ''",
+      pendingEventCreatedAt: 'TEXT NOT NULL',
+    };
+
+    await createTableIfNotExists(
+      tablePendingRangeEvents,
+      columns,
+      databaseConfig: db,
+    );
+
+    if (kDebugMode) {
+      debugPrint('Table verified: $tablePendingRangeEvents');
+    }
+  }
+
+  /// Stores one geofence transition while offline or when the API fails.
+  /// isUserOut: 1 = outside/exit, 0 = inside/return.
+  Future<int> insertPendingRangeEvent({
+    required String employeeId,
+    required int rangeId,
+    required double latitude,
+    required double longitude,
+    required int isUserOut,
+    required int gpsStatus,
+    required String batteryStatus,
+    required String address,
+  }) async {
+    try {
+      final db = await database;
+
+      return await db.insert(
+        tablePendingRangeEvents,
+        {
+          pendingEventEmployeeId: employeeId,
+          pendingEventRangeId: rangeId,
+          pendingEventLatitude: latitude,
+          pendingEventLongitude: longitude,
+          pendingEventIsUserOut: isUserOut,
+          pendingEventGpsStatus: gpsStatus,
+          pendingEventBatteryStatus: batteryStatus,
+          pendingEventAddress: address,
+          pendingEventCreatedAt: DateTime.now().toIso8601String(),
+        },
+        conflictAlgorithm: ConflictAlgorithm.abort,
+      );
+    } catch (e, stackTrace) {
+      debugPrint('Insert pending range event error: $e');
+      debugPrintStack(stackTrace: stackTrace);
+      return 0;
+    }
+  }
+
+  /// Returns pending events in insertion order.
+  Future<List<Map<String, dynamic>>> getPendingRangeEvents() async {
+    try {
+      final db = await database;
+      return await db.query(
+        tablePendingRangeEvents,
+        orderBy: '$pendingEventId ASC',
+      );
+    } catch (e, stackTrace) {
+      debugPrint('Get pending range events error: $e');
+      debugPrintStack(stackTrace: stackTrace);
+      return [];
+    }
+  }
+
+  /// Deletes one event only after its API upload succeeds.
+  Future<int> deletePendingRangeEvent(int eventId) async {
+    try {
+      final db = await database;
+      return await db.delete(
+        tablePendingRangeEvents,
+        where: '$pendingEventId = ?',
+        whereArgs: [eventId],
+      );
+    } catch (e, stackTrace) {
+      debugPrint('Delete pending range event error: $e');
+      debugPrintStack(stackTrace: stackTrace);
+      return 0;
+    }
+  }
 
   Future<bool> hasActiveRangeExit({
     required String employeeId,

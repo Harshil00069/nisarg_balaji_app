@@ -38,22 +38,22 @@ class PermissionUtil {
 
   static Future<bool> requestEnableLocation() async {
     try {
-      // 1. Check and request device GPS.
-      final location = loc.Location();
+      // 1. Check GPS
+      bool gpsEnabled =
+      await Geolocator.isLocationServiceEnabled();
 
-      bool serviceEnabled = await location.serviceEnabled();
-
-      if (!serviceEnabled) {
-        // On Android, request the system enable-location popup.
-        serviceEnabled = await location.requestService();
+      if (!gpsEnabled) {
+        // Request GPS activation from foreground UI
+        final location = loc.Location();
+        gpsEnabled = await location.requestService();
       }
 
-      if (!serviceEnabled) {
+      if (!gpsEnabled) {
         showToast(message: 'Please turn ON your Location');
         return false;
       }
 
-      // 2. Check app location permission.
+      // 2. Check permission
       LocationPermission permission =
       await Geolocator.checkPermission();
 
@@ -63,7 +63,6 @@ class PermissionUtil {
 
       if (permission == LocationPermission.deniedForever) {
         showToast(message: 'Please allow location permission');
-
         await Geolocator.openAppSettings();
         return false;
       }
@@ -73,11 +72,10 @@ class PermissionUtil {
         return false;
       }
 
-      // 3. Verify GPS is actually enabled.
-      return await Geolocator.isLocationServiceEnabled();
+      return true;
     } catch (e, stackTrace) {
-      debugPrint('Request location error: $e');
-      // debugPrintStack(stackTrace: stackTrace);
+      debugPrint('Location error: $e');
+      debugPrintStack(stackTrace: stackTrace);
       return false;
     }
   }

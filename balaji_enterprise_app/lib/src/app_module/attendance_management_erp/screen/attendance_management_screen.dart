@@ -7,7 +7,6 @@ import 'package:flutter_face_detection_balaji_enterprise/src/app_module/attendan
 import 'package:flutter_face_detection_balaji_enterprise/src/constant/app_dialogs.dart';
 import 'package:flutter_face_detection_balaji_enterprise/src/constant/app_fonts.dart';
 import 'package:flutter_face_detection_balaji_enterprise/src/constant/check_connectivity_screen.dart';
-import 'package:flutter_face_detection_balaji_enterprise/src/constant/database_helper.dart';
 import 'package:flutter_face_detection_balaji_enterprise/utils/app_colors.dart';
 import 'package:get/get.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -36,153 +35,165 @@ class _AddAttendanceScreenState extends State<AddAttendanceScreen> {
   Widget build(BuildContext context) {
     return CheckNetworkUI(
       child: Scaffold(
-        appBar: AppBar(
-          title: Text('DAY in - Day out', style: AppFonts.appTitle(color: Colors.black)),
-        ),
-        body: Stack(children: [
-          Column(
+          appBar: AppBar(
+            title: Text('DAY in - Day out',
+                style: AppFonts.appTitle(color: Colors.black)),
+          ),
+          body: Stack(
             children: [
-              Container(
-                margin: const EdgeInsets.all(4),
-                alignment: Alignment.center,
-                height: Get.height * 0.32,
-                clipBehavior: Clip.hardEdge,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: GoogleMap(
-                  myLocationEnabled: true,
-                  initialCameraPosition:
-                  _attendanceManagementController.kGooglePlex,
-                  onMapCreated: (GoogleMapController controller) {
-                    _attendanceManagementController.googleMapController
-                        .complete(controller);
-                  },
-                ),
-              ),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                child: Text(
-                  '* We Need to Capture Your Photo before Punch in or Punch Out',
-                  style: TextStyle(
-                    color: Colors.red,
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(14, 8, 14, 16),
-                child: Obx(
-                      () => Text(
-                    _attendanceManagementController.fullAddress.value,
-                    style: const TextStyle(
-                      color: AppColors.black,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
+              Column(
+                children: [
+                  Obx(() => Container(
+                        margin: const EdgeInsets.all(4),
+                        alignment: Alignment.center,
+                        height: Get.height * 0.32,
+                        clipBehavior: Clip.hardEdge,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: GoogleMap(
+                          myLocationEnabled: true,
+                          initialCameraPosition:
+                              _attendanceManagementController.kGooglePlex,
+                          polygons: _attendanceManagementController
+                              .companyRangePolygons,
+                          onMapCreated: (GoogleMapController controller) {
+                            _attendanceManagementController.googleMapController
+                                .complete(controller);
+                          },
+                        ),
+                      )),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    child: Text(
+                      '* We Need to Capture Your Photo before Punch in or Punch Out',
+                      style: TextStyle(
+                        color: Colors.red,
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
-                ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 8, 14, 16),
+                    child: Obx(
+                      () => Text(
+                        _attendanceManagementController.fullAddress.value,
+                        style: const TextStyle(
+                          color: AppColors.black,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Obx(
+                    () => !_attendanceManagementController.isOnWorkPlace.value
+                        ? Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Container(
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 20.0),
+                              decoration: BoxDecoration(
+                                  color: AppColors.white,
+                                  borderRadius: BorderRadius.circular(12),
+                                  boxShadow: const [
+                                    BoxShadow(
+                                      color: AppColors.primary,
+                                      blurRadius: 4.0,
+                                      spreadRadius: 1.0,
+                                    )
+                                  ]),
+                              child: Text(
+                                  "You Can Not Fill Attendance Due to Out Off Working Range",
+                                  textAlign: TextAlign.center,
+                                  style: AppFonts.text(
+                                      size: 16, color: Colors.red.shade800)),
+                            ),
+                          )
+                        : Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: [
+                              punchInButtonWidget(),
+                              punchOutButtonWidget(),
+                            ],
+                          ),
+                  ),
+                  const SizedBox(
+                    height: 16,
+                  ),
+                  const Divider(
+                    color: AppColors.grey,
+                    indent: 14,
+                    endIndent: 14,
+                    thickness: 0.9,
+                  ),
+                  // Padding(
+                  //   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  //   child: Text(
+                  //     'Today Punch In - Out History ($todayDate)',
+                  //     style: AppFonts.bodyText1(color: Colors.green.shade800),
+                  //   ),
+                  // ),
+                  // Text(
+                  //   LoginUserDetail.erpUser.value.punchInDnt,
+                  //   style: AppFonts.label1(color: AppColors.black),
+                  // ),
+                  // const SizedBox(
+                  //   height: 6,
+                  // ),
+                  // Text(
+                  //   LoginUserDetail.erpUser.value.punchOutDnt,
+                  //   style: AppFonts.label1(color: AppColors.black),
+                  // ),
+                ],
               ),
               Obx(
-                    () =>
-                    !_attendanceManagementController.isOnWorkPlace.value
-                    ? Container(
-                  padding: const EdgeInsets.symmetric(vertical: 20.0),
-                  decoration: BoxDecoration(
-                      color: AppColors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: AppColors.primary,
-                          blurRadius: 4.0,
-                          spreadRadius: 1.0,
-                        )
-                      ]),
-                  child: Text(
-                      "You Can Not Fill Attendance Due to Out Off Working Range",
-                      textAlign: TextAlign.center,
-                      style: AppFonts.text(
-                          size: 16, color: Colors.red.shade800)),
-                )
-                    : Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    punchInButtonWidget(),
-                    punchOutButtonWidget(),
-                  ],
-                ),
-              ),
-              const SizedBox(
-                height: 16,
-              ),
-              const Divider(
-                color: AppColors.grey,
-                indent: 14,
-                endIndent: 14,
-                thickness: 0.9,
-              ),
-              // Padding(
-              //   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              //   child: Text(
-              //     'Today Punch In - Out History ($todayDate)',
-              //     style: AppFonts.bodyText1(color: Colors.green.shade800),
-              //   ),
-              // ),
-              // Text(
-              //   LoginUserDetail.erpUser.value.punchInDnt,
-              //   style: AppFonts.label1(color: AppColors.black),
-              // ),
-              // const SizedBox(
-              //   height: 6,
-              // ),
-              // Text(
-              //   LoginUserDetail.erpUser.value.punchOutDnt,
-              //   style: AppFonts.label1(color: AppColors.black),
-              // ),
-            ],
-          ),
-
-          Obx(() => _attendanceManagementController.isPunchInLoading.value || _attendanceManagementController.isPunchStatusLoading.value
-                ? Positioned.fill(
-              child: Container(
-                color: Colors.black.withValues(alpha: 0.5),
-                child: const Center(
-                  child: Card(
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 30,
-                        vertical: 24,
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          CircularProgressIndicator(),
-                          SizedBox(height: 16),
-                          Text(
-                            'Please wait...',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
+                () => _attendanceManagementController.isPunchInLoading.value ||
+                        _attendanceManagementController
+                            .isPunchStatusLoading.value
+                    ? Positioned.fill(
+                        child: Container(
+                          color: Colors.black.withValues(alpha: 0.5),
+                          child: const Center(
+                            child: Card(
+                              child: Padding(
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: 30,
+                                  vertical: 24,
+                                ),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    CircularProgressIndicator(),
+                                    SizedBox(height: 16),
+                                    Text(
+                                      'Please wait...',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ),
                           ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
+                        ),
+                      )
+                    : const SizedBox.shrink(),
               ),
-            )
-                : const SizedBox.shrink(),
-          ),
-        ],)
-      ),
+            ],
+          )),
     );
   }
 
   Widget punchInButtonWidget() {
     return Opacity(
-      opacity: _attendanceManagementController.punchInOutStatus.value == 0  || _attendanceManagementController.punchInOutStatus.value == 1 ? 0.5 : 1,
+      opacity: _attendanceManagementController.punchInOutStatus.value == 0 ||
+              _attendanceManagementController.punchInOutStatus.value == 1
+          ? 0.5
+          : 1,
       child: Material(
         color: AppColors.white,
         borderRadius: BorderRadius.circular(12),
@@ -190,16 +201,14 @@ class _AddAttendanceScreenState extends State<AddAttendanceScreen> {
         elevation: 2,
         child: InkWell(
           onTap: () async {
-            // await startBackgroundService();
-
             if (_attendanceManagementController.punchInOutStatus.value == 0) {
               appDoneDialog(
                   onPressed: () {
                     Get.back();
                   },
-                  msg:
-                      "Your Today's Punch In Done");
-            } else if (_attendanceManagementController.punchInOutStatus.value == -1) {
+                  msg: "Your Today's Punch In Done");
+            } else if (_attendanceManagementController.punchInOutStatus.value ==
+                -1) {
               if (_attendanceManagementController.isLoadingGoogleMap.isFalse &&
                   _attendanceManagementController.hasErrorGoogleMap.isFalse) {
                 showDialogForPunchIn();
@@ -213,8 +222,7 @@ class _AddAttendanceScreenState extends State<AddAttendanceScreen> {
                   onPressed: () {
                     Get.back();
                   },
-                  msg:
-                      "Your Today's Punch In Done}");
+                  msg: "Your Today's Punch In Done}");
             }
           },
           child: Container(
@@ -371,7 +379,9 @@ class _AddAttendanceScreenState extends State<AddAttendanceScreen> {
   }
 
   Widget punchOutButtonWidget() {
-    return Opacity(opacity: _attendanceManagementController.punchInOutStatus.value == 0 ? 1 : 0.5,
+    return Opacity(
+      opacity:
+          _attendanceManagementController.punchInOutStatus.value == 0 ? 1 : 0.5,
       // opacity: 1,
       child: Material(
         color: AppColors.white,
@@ -380,7 +390,7 @@ class _AddAttendanceScreenState extends State<AddAttendanceScreen> {
         elevation: 2,
         child: InkWell(
           onTap: () async {
-           /* stopBackgroundService();
+            /* stopBackgroundService();
             final databaseHelper = DatabaseHelper();
             final user = await databaseHelper.fetchStoredUser();
             final employeeId = user.empId;
@@ -391,10 +401,10 @@ class _AddAttendanceScreenState extends State<AddAttendanceScreen> {
                 onPressed: () {
                   Get.back();
                 },
-                msg:
-                    "Your Today's Punch Out Done  ",
+                msg: "Your Today's Punch Out Done  ",
               );
-            } else if (_attendanceManagementController.punchInOutStatus.value == 0) {
+            } else if (_attendanceManagementController.punchInOutStatus.value ==
+                0) {
               if (_attendanceManagementController.isLoadingGoogleMap.isFalse &&
                   _attendanceManagementController.hasErrorGoogleMap.isFalse) {
                 showDialogForPunchIn(isForPunchOut: true);
@@ -406,8 +416,7 @@ class _AddAttendanceScreenState extends State<AddAttendanceScreen> {
                   onPressed: () {
                     Get.back();
                   },
-                  msg:
-                      "Your Today's Punch Out Done");
+                  msg: "Your Today's Punch Out Done");
             }
           },
           child: Container(

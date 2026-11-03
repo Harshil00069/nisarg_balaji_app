@@ -1,39 +1,25 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
+
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_face_detection_balaji_enterprise/src/api_manager/api_implementor.dart';
 import 'package:flutter_face_detection_balaji_enterprise/src/app_module/attendance_management_erp/background_service/flutter_background_service.dart';
 import 'package:flutter_face_detection_balaji_enterprise/src/app_module/attendance_management_erp/model/location_track_by_company_data_model.dart';
-import 'package:flutter_face_detection_balaji_enterprise/src/app_module/attendance_management_erp/model/today_in_out_time_model.dart';
 import 'package:flutter_face_detection_balaji_enterprise/src/constant/app_dialogs.dart';
 import 'package:flutter_face_detection_balaji_enterprise/src/constant/database_helper.dart';
 import 'package:flutter_face_detection_balaji_enterprise/src/constant/permission_dialogs.dart';
-import 'package:flutter_face_detection_balaji_enterprise/src/view/models/login_response.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:intl/intl.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class AttendanceManagementController extends GetxController {
-  // final dateFormat = DateFormat('yyyy-MM-dd');
-  // var today = DateTime.now();
-  // RxString selectedFromDate = ''.obs;
-  // RxString selectedToDate = ''.obs;
-  // RxInt userType = 0.obs;
-  // DateTime? fromDate;
-  // DateTime? toDate;
-  // Rx<GetTodayInOutTimeModel> punchDetail = GetTodayInOutTimeModel().obs;
-
-  // ===== For Add Attendance =====
-
   List<ConnectivityResult> connectionStatusOnly = [ConnectivityResult.none];
   final Connectivity connectivityCheck = Connectivity();
   late StreamSubscription<List<ConnectivityResult>>
-  connectivitySubscriptionCheck;
+      connectivitySubscriptionCheck;
 
   final Completer<GoogleMapController> googleMapController =
       Completer<GoogleMapController>();
@@ -62,14 +48,7 @@ class AttendanceManagementController extends GetxController {
 
   final DatabaseHelper databaseHelper = DatabaseHelper();
 
-  RxList<LocationDatum> locationDataByCompany =<LocationDatum>[].obs;
-
-  @override
-  void onInit() {
-    super.onInit();
-    // initData();
-    initializeApiData();
-  }
+  RxList<LocationDatum> locationDataByCompany = <LocationDatum>[].obs;
 
   @override
   void dispose() {
@@ -78,8 +57,8 @@ class AttendanceManagementController extends GetxController {
   }
 
   Future<void> initializeApiData() async {
-   await locationDataByCompanyListApi();
-   await checkInOutByUserIdListApi();
+    await locationDataByCompanyListApi();
+    await checkInOutByUserIdListApi();
     await getCurrentLocation();
     // getTodayPunchInOutTimeApi();
   }
@@ -189,11 +168,11 @@ class AttendanceManagementController extends GetxController {
 
       if (response.status == 1) {
         if (punchInOrOutFlag == "0") {
-          service.startService();
+          await startBackgroundService();
           // punchDetail.value.erpInAttendance = response.punchDateAndTime;
           update();
         } else if (punchInOrOutFlag == "1") {
-          stopBackgroundService();
+          await stopBackgroundService();
           // punchDetail.value.erpOutAttendance = response.punchDateAndTime;
           update();
         } else {}
@@ -211,66 +190,6 @@ class AttendanceManagementController extends GetxController {
     }
   }
 
-  // Future<void> getTodayPunchInOutTimeApi() async {
-  //   try {
-  //     var response = await ApiImplementor.getTodayInOutApiImplementor();
-  //     punchDetail.value = response;
-  //
-  //     var userName = await SharedPref.getString(StringConstants.userName);
-  //     var password = await SharedPref.getString(StringConstants.password);
-  //     var compId = await SharedPref.getString(StringConstants.compId);
-  //     var branchId = await SharedPref.getString(StringConstants.branchId);
-  //
-  //     final checkLoginResponse = await ErpLoginModel.erpLoginApiCall(
-  //       userName: userName,
-  //       password: password,
-  //       compId: compId,
-  //       branchId: branchId,
-  //     );
-  //     if (checkLoginResponse.flag == 1) {
-  //       await SharedPref.save(
-  //         StringConstants.loginUser,
-  //         checkLoginResponse.toJson(),
-  //       );
-  //       await LoginUserDetail.fillUserDetailBucket();
-  //     }
-  //
-  //     if (punchDetail.value.isTakeRangeAction == 1) {
-  //       isOnWorkPlace.value = checkUserOnWorkPlace();
-  //     }
-  //     update();
-  //   } catch (e) {
-  //     if (kDebugMode) {
-  //       print(e);
-  //     }
-  //   }
-  // }
-
-  // bool checkUserOnWorkPlace() {
-  //   double range = punchDetail.value.range;
-  //   var isNotDefaultValsCheck =
-  //       punchDetail.value.attendanceLatitude.trim().isNotEmpty &&
-  //       punchDetail.value.attendanceLongitude.trim().isNotEmpty &&
-  //       range > 0.0;
-  //   if (isNotDefaultValsCheck) {
-  //     double punchLat = double.parse(punchDetail.value.attendanceLatitude);
-  //     double punchLong = double.parse(punchDetail.value.attendanceLongitude);
-  //     var distanceInMeters = Geolocator.distanceBetween(
-  //       currentPositionData!.latitude,
-  //       currentPositionData!.longitude,
-  //       punchLat,
-  //       punchLong,
-  //     );
-  //     if (distanceInMeters < range) {
-  //       return true;
-  //     } else {
-  //       return false;
-  //     }
-  //   } else {
-  //     return false;
-  //   }
-  // }
-
   Future<void> checkInOutByUserIdListApi() async {
     final user = await databaseHelper.fetchStoredUser();
     final String employeeId = user.empId;
@@ -279,11 +198,12 @@ class AttendanceManagementController extends GetxController {
     isPunchStatusLoading.value = true;
     punchInOutStatus.value = 0;
     try {
-      var response = await ApiImplementor.getPunchInOutStatusApiImplementer(employeeId: employeeId,companyId: companyId,authToken: token);
+      var response = await ApiImplementor.getPunchInOutStatusApiImplementer(
+          employeeId: employeeId, companyId: companyId, authToken: token);
       if (response.status == 1) {
         punchInOutStatus.value = response.data!.punchInOutFlag;
       }
-        isPunchStatusLoading.value = false;
+      isPunchStatusLoading.value = false;
       return;
     } catch (e) {
       punchInOutStatus.value = 0;
@@ -294,20 +214,21 @@ class AttendanceManagementController extends GetxController {
     }
   }
 
-
   Future<void> locationDataByCompanyListApi() async {
     locationDataByCompany.clear();
+    await DatabaseHelper().clearAdminRangeTable();
     final user = await databaseHelper.fetchStoredUser();
     final String companyId = user.companyId;
     final String token = user.token;
     isPunchStatusLoading.value = true;
     punchInOutStatus.value = 0;
-    await DatabaseHelper().clearAdminRangeTable();
+
     try {
-      var response = await ApiImplementor.getLocationByCompanyApiImplementer(companyId: companyId,authToken: token);
+      var response = await ApiImplementor.getLocationByCompanyApiImplementer(
+          companyId: companyId, authToken: token);
       if (response.status == 1) {
         locationDataByCompany.addAll(response.data!.locationData);
-        isOnWorkPlace.value  = await checkUserInRange();
+        isOnWorkPlace.value = await checkUserInRange();
 
         await DatabaseHelper().saveAdminRange(
           rangeId: 1,
@@ -315,7 +236,7 @@ class AttendanceManagementController extends GetxController {
           rangePoints: locationDataByCompany,
         );
       }
-        isPunchStatusLoading.value = false;
+      isPunchStatusLoading.value = false;
       return;
     } catch (e) {
       punchInOutStatus.value = 0;
@@ -324,6 +245,29 @@ class AttendanceManagementController extends GetxController {
         print(e);
       }
     }
+  }
+
+  Set<Polygon> get companyRangePolygons {
+    if (locationDataByCompany.length < 3) {
+      return {};
+    }
+
+    List<LatLng> points = locationDataByCompany.map((location) {
+      return LatLng(
+        location.lat,
+        location.long,
+      );
+    }).toList();
+
+    return {
+      Polygon(
+        polygonId: const PolygonId('admin_range'),
+        points: points,
+        strokeWidth: 3,
+        strokeColor: Colors.red,
+        fillColor: Colors.red.withValues(alpha: 0.20),
+      ),
+    };
   }
 
   Future<bool> checkUserInRange() async {
@@ -336,7 +280,7 @@ class AttendanceManagementController extends GetxController {
 
     double userLat = position.latitude;
     double userLong = position.longitude;
-
+ print("userLat= ${userLat} =userLong  ${userLong}");
     // Allowed radius in meters
     double allowedDistance = 50;
 

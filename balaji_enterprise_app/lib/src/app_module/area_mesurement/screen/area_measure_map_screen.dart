@@ -292,7 +292,7 @@ class _MeasureMapScreenState extends State<MeasureMapScreen> {
               ? IconButton(
                   tooltip: 'Save',
                   onPressed: unDo,
-                  icon: Icon(Icons.undo),
+                  icon: const Icon(Icons.undo),
                 )
               : const SizedBox(),
           IconButton(tooltip: 'Save', onPressed: _save, icon: const Icon(Icons.done)),
@@ -321,7 +321,7 @@ class _MeasureMapScreenState extends State<MeasureMapScreen> {
                   polygons: polygonPoints.length >= 3
                       ? {
                     Polygon(
-                      polygonId: PolygonId("area"),
+                      polygonId: const PolygonId("area"),
                       points: polygonPoints,
                       strokeColor: Colors.green,
                       strokeWidth: 2,
@@ -397,18 +397,18 @@ class _MeasureMapScreenState extends State<MeasureMapScreen> {
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
           ElevatedButton.icon(
-            icon: Icon(Icons.add),
+            icon: const Icon(Icons.add),
             onPressed: _addPoint,
-            label: Text("Add Point"),
+            label: const Text("Add Point"),
           ),
           ElevatedButton.icon(
-            icon: Icon(Icons.close),
+            icon: const Icon(Icons.close),
             onPressed: _reset,
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
               foregroundColor: Colors.white,
             ),
-            label: Text("Reset"),
+            label: const Text("Reset"),
           ),
         ],
       ),

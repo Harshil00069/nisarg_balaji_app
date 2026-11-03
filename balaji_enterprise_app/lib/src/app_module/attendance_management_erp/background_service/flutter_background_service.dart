@@ -2,19 +2,17 @@ import 'dart:async';
 import 'dart:ui';
 import 'package:battery_plus/battery_plus.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:dart_ipify/dart_ipify.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_face_detection_balaji_enterprise/src/api_manager/api_config_erp_dio.dart';
 import 'package:flutter_face_detection_balaji_enterprise/src/app_module/attendance_management_erp/model/insert_gps_treking_model.dart';
-import 'package:flutter_face_detection_balaji_enterprise/src/app_module/attendance_management_erp/model/location_data_model.dart';
 import 'package:flutter_face_detection_balaji_enterprise/src/constant/database_helper.dart';
 import 'package:flutter_face_detection_balaji_enterprise/src/constant/permission_dialogs.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:intl/intl.dart';
 import 'background_service_state.dart';
 
 // -----------------------------------------------------------------------------
@@ -159,51 +157,64 @@ Future<void> _processLocation(
     ServiceInstance serviceInstance,
     Timer timer,
     ) async {
-  // Do not start another location check if the previous one is still running.
   if (_isLocationProcessing) {
-    if (kDebugMode) debugPrint('Previous location check is still running; skipped.');
+    if (kDebugMode) {
+      debugPrint('Previous location check is still running; skipped.');
+    }
     return;
   }
 
   _isLocationProcessing = true;
 
   try {
-    // 1. Stop if attendance tracking is no longer enabled.
-    final trackingEnabled = await BackgroundServiceState.isTrackingEnabled();
+    // 1. Check attendance tracking
+    final trackingEnabled =
+    await BackgroundServiceState.isTrackingEnabled();
+
     if (!trackingEnabled) {
       await _stopFromBackground(serviceInstance, timer);
       return;
     }
 
-    // 2. Verify that device location services are enabled.
-    final locationServiceEnabled = await Geolocator.isLocationServiceEnabled();
+    // 2. Check GPS
+    final locationServiceEnabled =
+    await Geolocator.isLocationServiceEnabled();
+
     if (!locationServiceEnabled) {
       checkGpsStatus = 0;
+
       if (serviceInstance is AndroidServiceInstance) {
         serviceInstance.setForegroundNotificationInfo(
           title: 'Location Disabled',
           content: 'Please enable device location',
         );
       }
+
       await _sendGpsDisabledHeartbeat();
       return;
     }
 
-    // 3. Verify location permission.
-    final hasPermission = await PermissionUtil.requestEnableLocation();
-    if (!hasPermission) {
+    // 3. Check existing permission only
+    final LocationPermission permission =
+    await Geolocator.checkPermission();
+
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever ||
+        permission == LocationPermission.unableToDetermine) {
       checkGpsStatus = 0;
+
       if (serviceInstance is AndroidServiceInstance) {
         serviceInstance.setForegroundNotificationInfo(
           title: 'Location Permission Disabled',
           content: 'Please allow location permission',
         );
       }
+
       await _sendGpsDisabledHeartbeat();
       return;
     }
 
-    // 4. Get current GPS location.
+    // 4. Get current GPS location
     final Position position = await Geolocator.getCurrentPosition(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.bestForNavigation,
@@ -219,8 +230,26 @@ Future<void> _processLocation(
       );
     }
 
-    // 5. Check the saved admin polygon on EVERY 30-second location tick.
-    await _checkEmployeeRange(position);
+    // 5. Sync pending offline events
+    final connectivity = await Connectivity().checkConnectivity();
+
+    final bool isOnline =
+    !connectivity.contains(ConnectivityResult.none);
+
+    if (isOnline) {
+      await BackgroundLocationApi.syncPendingRangeEvents();
+
+      final pendingEvents =
+      await DatabaseHelper().getPendingRangeEvents();
+
+      if (pendingEvents.isEmpty) {
+        await _checkEmployeeRange(position);
+      } else if (kDebugMode) {
+        debugPrint('Pending events remain. Range check postponed.');
+      }
+    } else {
+      await _checkEmployeeRange(position);
+    }
 
     if (serviceInstance is AndroidServiceInstance) {
       serviceInstance.setForegroundNotificationInfo(
@@ -228,6 +257,7 @@ Future<void> _processLocation(
         content: 'Checking employee range',
       );
     }
+
   } catch (e, stackTrace) {
     debugPrint('Background location process error: $e');
     debugPrintStack(stackTrace: stackTrace);
@@ -244,7 +274,6 @@ Future<void> _checkEmployeeRange(Position position) async {
   final DatabaseHelper databaseHelper = DatabaseHelper();
 
   try {
-    // Load the employee currently saved by the app.
     final user = await databaseHelper.fetchStoredUser();
     final String employeeId = user.empId;
 
@@ -253,15 +282,12 @@ Future<void> _checkEmployeeRange(Position position) async {
       return;
     }
 
-    // Load the polygon points saved by the admin.
     final List<LatLng> rangePoints =
     await databaseHelper.fetchAdminRange(employeeRangeId);
 
     if (rangePoints.length < 3) {
       if (kDebugMode) {
-        debugPrint(
-          'Range check skipped: range $employeeRangeId has fewer than 3 points.',
-        );
+        debugPrint('Range check skipped: range $employeeRangeId has fewer than 3 points.');
       }
       return;
     }
@@ -270,54 +296,49 @@ Future<void> _checkEmployeeRange(Position position) async {
     LatLng(position.latitude, position.longitude);
     final bool isInside = isInsidePolygon(currentLocation, rangePoints);
 
-    // Check whether an exit state is already stored for this employee/range.
-    final bool hasExitRecord = await databaseHelper.hasActiveRangeExit(
+    // rangeId identifies the admin polygon. isUserOut is a separate status.
+    final int rangeId = employeeRangeId;
+    final int isUserOut = isInside ? 0 : 1;
+
+    final bool hasExitRecord =
+    await databaseHelper.hasActiveRangeExit(
       employeeId: employeeId,
-      rangeId: employeeRangeId,
+      rangeId: rangeId,
     );
 
+    // EMPLOYEE INSIDE
     if (isInside) {
-      // Only send a return event if an exit record existed.
       if (!hasExitRecord) {
-        if (kDebugMode) debugPrint('Employee is inside; no range-state change.');
+        if (kDebugMode) debugPrint('Employee is inside; no transition required.');
         return;
       }
 
-      // Clear the exit state first, then verify the deletion.
-      await databaseHelper.clearActiveRangeExit(
-        employeeId: employeeId,
-        rangeId: employeeRangeId,
-      );
-
-      final bool stillHasExitRecord = await databaseHelper.hasActiveRangeExit(
-        employeeId: employeeId,
-        rangeId: employeeRangeId,
-      );
-
-      if (stillHasExitRecord) {
-        debugPrint('Return event not sent: exit record could not be cleared.');
-        return;
-      }
-
-      if (kDebugMode) {
-        debugPrint('Employee returned inside range. Exit state cleared.');
-      }
-
-      // Calls the existing GPS tracking endpoint for this state transition.
-      final bool success = await BackgroundLocationApi.processLocation(
+      // true means the API succeeded OR the event was safely queued offline.
+      final bool savedOrSent =
+      await BackgroundLocationApi.processLocation(
         position: position,
         gpsStatus: 1,
+        isUserOut: isUserOut,
+      );
+
+      if (!savedOrSent) {
+        debugPrint('Return event failed and was not queued. Exit state retained.');
+        return;
+      }
+
+      // Clear only after the return event is delivered or safely queued.
+      await databaseHelper.clearActiveRangeExit(
+        employeeId: employeeId,
+        rangeId: rangeId,
       );
 
       if (kDebugMode) {
-        debugPrint(success
-            ? 'Return transition location submitted/saved.'
-            : 'Return transition location was not submitted successfully.');
+        debugPrint('Return event sent/queued. Active exit state cleared.');
       }
       return;
     }
 
-    // Employee is outside the polygon.
+    // EMPLOYEE OUTSIDE
     if (hasExitRecord) {
       if (kDebugMode) {
         debugPrint('Employee is still outside; exit record exists. API skipped.');
@@ -325,40 +346,44 @@ Future<void> _checkEmployeeRange(Position position) async {
       return;
     }
 
-    // First outside check in this exit period: save the state.
+    // Save active exit state first to prevent repeated exit events.
     await databaseHelper.saveActiveRangeExit(
       employeeId: employeeId,
-      rangeId: employeeRangeId,
+      rangeId: rangeId,
       latitude: position.latitude,
       longitude: position.longitude,
     );
 
-    // saveActiveRangeExit in the supplied DatabaseHelper catches its own errors,
-    // so verify the record exists before attempting the API request.
-    final bool recordSaved = await databaseHelper.hasActiveRangeExit(
+    final bool recordSaved =
+    await databaseHelper.hasActiveRangeExit(
       employeeId: employeeId,
-      rangeId: employeeRangeId,
+      rangeId: rangeId,
     );
 
     if (!recordSaved) {
-      debugPrint('Exit transition API skipped: exit state was not saved.');
+      debugPrint('Exit event skipped: active exit state could not be saved.');
+      return;
+    }
+
+    final bool savedOrSent =
+    await BackgroundLocationApi.processLocation(
+      position: position,
+      gpsStatus: 1,
+      isUserOut: isUserOut,
+    );
+
+    if (!savedOrSent) {
+      // Neither API nor local queue succeeded, so allow retry next tick.
+      await databaseHelper.clearActiveRangeExit(
+        employeeId: employeeId,
+        rangeId: rangeId,
+      );
+      debugPrint('Exit event failed and was not queued; active state reset.');
       return;
     }
 
     if (kDebugMode) {
-      debugPrint('Employee exited range. Exit state saved.');
-    }
-
-    // Calls the existing GPS tracking endpoint for this state transition.
-    final bool success = await BackgroundLocationApi.processLocation(
-      position: position,
-      gpsStatus: 1,
-    );
-
-    if (kDebugMode) {
-      debugPrint(success
-          ? 'Exit transition location submitted/saved.'
-          : 'Exit transition location was not submitted successfully.');
+      debugPrint('Exit event sent/queued. Active exit state retained.');
     }
   } catch (e, stackTrace) {
     debugPrint('Employee range check error: $e');
@@ -450,80 +475,172 @@ class BackgroundLocationApi {
   static Future<bool> processLocation({
     required Position position,
     required int gpsStatus,
+    required int isUserOut,
   }) async {
     final DatabaseHelper databaseHelper = DatabaseHelper();
-    final user = await databaseHelper.fetchStoredUser();
-
-    if (kDebugMode) {
-      debugPrint('userId => ${user.userId}');
-      debugPrint('empId => ${user.empId}');
-    }
-
-    if (user.userId == '0' || user.empId == '0') {
-      if (kDebugMode) debugPrint('Invalid stored user information.');
-      return false;
-    }
-
-    int battery = 0;
-    String address = '';
 
     try {
-      battery = await Battery().batteryLevel;
-    } catch (_) {
-      battery = 0;
-    }
+      final user = await databaseHelper.fetchStoredUser();
 
-    try {
-      final placemarks = await placemarkFromCoordinates(
-        position.latitude,
-        position.longitude,
-      );
-      if (placemarks.isNotEmpty) {
-        final place = placemarks.first;
-        address = '${place.street}, ${place.subLocality}, '
-            '${place.locality}, ${place.administrativeArea}';
+      if (kDebugMode) {
+        debugPrint('userId => ${user.userId}');
+        debugPrint('empId => ${user.empId}');
       }
-    } catch (_) {
-      address = 'No address found';
-    }
 
-    final connectivity = await Connectivity().checkConnectivity();
-    final bool isOnline = !connectivity.contains(ConnectivityResult.none);
-    final String now = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+      if (user.userId == '0' || user.empId == '0') {
+        if (kDebugMode) debugPrint('Invalid stored user information.');
+        return false;
+      }
 
-    if (isOnline) {
-      return insertTrackDetailApi(
-        baseURL: user.baseUrl,
-        hREmployeeId: user.empId,
-        hRUserId: user.userId,
-        longitude: position.longitude.toString(),
-        latitude: position.latitude.toString(),
-        gpsStatus: gpsStatus.toString(),
+      int battery = 0;
+      String address = '';
+
+      try {
+        battery = await Battery().batteryLevel;
+      } catch (_) {
+        battery = 0;
+      }
+
+      try {
+        final placemarks = await placemarkFromCoordinates(
+          position.latitude,
+          position.longitude,
+        );
+        if (placemarks.isNotEmpty) {
+          final place = placemarks.first;
+          address = '${place.street}, ${place.subLocality}, '
+              '${place.locality}, ${place.administrativeArea}';
+        }
+      } catch (_) {
+        address = 'No address found';
+      }
+
+      final connectivity = await Connectivity().checkConnectivity();
+      final bool isOnline =
+      !connectivity.contains(ConnectivityResult.none);
+
+      if (isOnline) {
+        final bool apiSuccess = await insertTrackDetailApi(
+          token: user.token,
+          baseURL: user.baseUrl,
+          employeeId: user.empId,
+          longitude: position.longitude.toString(),
+          latitude: position.latitude.toString(),
+          gpsStatus: gpsStatus.toString(),
+          batteryStatus: battery.toString(),
+          address: address,
+          isUserOut: isUserOut,
+          companyId: user.companyId,
+        );
+
+        if (apiSuccess) return true;
+
+        // If the online request fails, preserve the transition for retry.
+        final int queuedId =
+        await databaseHelper.insertPendingRangeEvent(
+          employeeId: user.empId,
+          rangeId: employeeRangeId,
+          latitude: position.latitude,
+          longitude: position.longitude,
+          isUserOut: isUserOut,
+          gpsStatus: gpsStatus,
+          batteryStatus: battery.toString(),
+          address: address,
+        );
+
+        if (kDebugMode) {
+          debugPrint(queuedId > 0
+              ? 'API failed. Transition saved in pending queue.'
+              : 'API failed and pending queue insert failed.');
+        }
+        return queuedId > 0;
+      }
+
+      // Offline: save only the exit/return transition, not every GPS tick.
+      final int queuedId =
+      await databaseHelper.insertPendingRangeEvent(
+        employeeId: user.empId,
+        rangeId: employeeRangeId,
+        latitude: position.latitude,
+        longitude: position.longitude,
+        isUserOut: isUserOut,
+        gpsStatus: gpsStatus,
         batteryStatus: battery.toString(),
-        network: '1',
-        datetime: now,
         address: address,
       );
+
+      if (kDebugMode) {
+        debugPrint(queuedId > 0
+            ? 'Offline transition saved in pending queue.'
+            : 'Offline transition queue insert failed.');
+      }
+
+      return queuedId > 0;
+    } catch (e, stackTrace) {
+      debugPrint('Process location error: $e');
+      debugPrintStack(stackTrace: stackTrace);
+      return false;
     }
+  }
 
-    // Offline: queue a location using your existing location table.
-    final int insertedId = await databaseHelper.insert(
-      LocationDataModel(
-        batteryLevel: battery.toString(),
-        name: address.isEmpty ? 'Offline' : address,
-        longitude: position.longitude.toString(),
-        latitude: position.latitude.toString(),
-        createdAt: now,
-      ).toMap(),
-    );
+  /// Upload pending exit/return events in insertion order.
+  /// Delete an event only after the API confirms success.
+  static Future<void> syncPendingRangeEvents() async {
+    final DatabaseHelper databaseHelper = DatabaseHelper();
 
-    if (kDebugMode) {
-      debugPrint(insertedId > 0
-          ? 'No internet: location saved locally.'
-          : 'No internet: saving location failed.');
+    try {
+      final user = await databaseHelper.fetchStoredUser();
+      if (user.userId == '0' || user.empId == '0') return;
+
+      final connectivity = await Connectivity().checkConnectivity();
+      if (connectivity.contains(ConnectivityResult.none)) return;
+
+      final pendingEvents = await databaseHelper.getPendingRangeEvents();
+      if (pendingEvents.isEmpty) return;
+
+      if (kDebugMode) {
+        debugPrint('Pending range events to upload: ${pendingEvents.length}');
+      }
+
+      for (final event in pendingEvents) {
+        final currentConnectivity =
+        await Connectivity().checkConnectivity();
+
+        if (currentConnectivity.contains(ConnectivityResult.none)) {
+          debugPrint('Internet disconnected. Remaining events retained.');
+          break;
+        }
+
+        final bool success = await insertTrackDetailApi(
+          token: user.token,
+          baseURL: user.baseUrl,
+          employeeId: event['employee_id'].toString(),
+          companyId: user.companyId,
+          latitude: event['latitude'].toString(),
+          longitude: event['longitude'].toString(),
+          gpsStatus: event['gps_status'].toString(),
+          batteryStatus: event['battery_status'].toString(),
+          address: event['address'].toString(),
+          isUserOut: (event['is_user_out'] as num).toInt(),
+        );
+
+        if (!success) {
+          debugPrint('Pending upload failed. This and later events remain queued.');
+          break;
+        }
+
+        await databaseHelper.deletePendingRangeEvent(
+          (event['id'] as num).toInt(),
+        );
+
+        if (kDebugMode) {
+          debugPrint('Pending event ${event['id']} uploaded and deleted.');
+        }
+      }
+    } catch (e, stackTrace) {
+      debugPrint('Pending range event sync error: $e');
+      debugPrintStack(stackTrace: stackTrace);
     }
-
-    return insertedId > 0;
   }
 
   /// Reports GPS unavailable, no more than once every 10 minutes while enabled.
@@ -551,19 +668,19 @@ class BackgroundLocationApi {
       return false;
     }
 
-    final String now = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+    // final String now = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
 
     return insertTrackDetailApi(
-      baseURL: user.baseUrl,
-      hREmployeeId: user.empId,
-      hRUserId: user.userId,
-      latitude: '0.0',
-      longitude: '0.0',
-      gpsStatus: '0',
-      batteryStatus: battery.toString(),
-      address: 'Location Disabled',
-      datetime: now,
-      network: '1',
+      token: user.token,
+        baseURL: user.baseUrl,
+        companyId: user.companyId,
+        latitude: '0.0',
+        longitude: '0.0',
+        gpsStatus: '0',
+        batteryStatus: battery.toString(),
+        address: 'Location Disabled',
+        isUserOut: 2,
+        employeeId: user.empId
     );
   }
 
@@ -575,12 +692,12 @@ class BackgroundLocationApi {
     required String latitude,
     required String longitude,
     required String address,
-    required String datetime,
-    required String network,
-    required String hRUserId,
-    required String hREmployeeId,
+    required String employeeId,
+    required String token,
+    required String companyId,
+    required int isUserOut
   }) async {
-    if (hRUserId == '0' || hREmployeeId == '0') return false;
+    if (employeeId == '0') return false;
 
     try {
       final bool enabled = await BackgroundServiceState.isTrackingEnabled();
@@ -589,38 +706,33 @@ class BackgroundLocationApi {
         return false;
       }
 
-      String createdIP = '';
-      try {
-        createdIP = await Ipify.ipv4(format: Format.TEXT);
-      } catch (_) {
-        createdIP = '';
-      }
-
       final Map<String, dynamic> body = {
-        'emp_id': hREmployeeId,
-        'battery_status': batteryStatus,
-        'gps_status': gpsStatus,
-        'lat': latitude,
-        'longs': longitude,
-        'address': address,
-        'datetime': datetime,
-        'network': network,
-        'created_by': hRUserId,
-        'created_ip': createdIP,
+        "employee_id": employeeId,
+        "company_id": companyId,
+        "latitude": latitude,
+        "longitude": longitude,
+        "location_address": address,
+        "punch_in_out_flag": isUserOut
       };
 
       // ErpDio's configured client is expected to contain the base URL.
       // baseURL is retained in this method signature to match existing callers.
-      final response = await ErpDio.getDioClient().get(
-        'insert_employee_gps_tracking_detail',
-        queryParameters: body,
+      final response = await ErpDio.getDioClient().post(
+        options: Options(
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+          },
+        ),
+        'api/location-attendance-tracking',
+        data: body,
       );
 
-      final List<InsertGpsTrackingDetailResponse> result = (response as List)
-          .map((item) => InsertGpsTrackingDetailResponse.fromJson(item))
-          .toList();
+      final responseData = response.data;
+      var result = InsertGpsTrackingDetailResponse.fromJson(responseData);
 
-      final bool success = result.isNotEmpty && result.first.status == 1;
+      final bool success = result.status == 1;
 
       if (kDebugMode) {
         debugPrint(success
