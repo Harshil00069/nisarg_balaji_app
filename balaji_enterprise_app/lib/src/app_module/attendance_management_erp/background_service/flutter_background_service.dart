@@ -22,6 +22,14 @@ import 'background_service_state.dart';
 const String notificationChannelId = 'FORGROUND_SERVICE';
 const int notificationId = 888;
 
+const String rangeNotificationChannelId = 'EMPLOYEE_RANGE_ALERTS';
+
+const int outOfRangeNotificationId = 889;
+const int inRangeNotificationId = 890;
+
+final FlutterLocalNotificationsPlugin rangeNotifications =
+FlutterLocalNotificationsPlugin();
+
 /// Get a location and check the employee's admin range every 30 seconds.
 const Duration locationCheckInterval = Duration(seconds: 30);
 
@@ -59,6 +67,13 @@ Future<void> initializeService() async {
       AndroidFlutterLocalNotificationsPlugin>()
       ?.createNotificationChannel(channel);
 
+  await initializeRangeNotifications();
+
+  await rangeNotifications
+      .resolvePlatformSpecificImplementation<
+      AndroidFlutterLocalNotificationsPlugin>()
+      ?.requestNotificationsPermission();
+
   await service.configure(
     iosConfiguration: IosConfiguration(
       onForeground: onStart,
@@ -76,6 +91,83 @@ Future<void> initializeService() async {
   );
 }
 
+Future<void> initializeRangeNotifications() async {
+  const AndroidInitializationSettings androidSettings =
+  AndroidInitializationSettings('@mipmap/ic_launcher');
+
+  const InitializationSettings settings = InitializationSettings(
+    android: androidSettings,
+  );
+
+  await rangeNotifications.initialize(settings);
+
+  const AndroidNotificationChannel channel =
+  AndroidNotificationChannel(
+    rangeNotificationChannelId,
+    'Employee Range Alerts',
+    description: 'Employee location range notifications',
+    importance: Importance.high,
+  );
+
+  await rangeNotifications
+      .resolvePlatformSpecificImplementation<
+      AndroidFlutterLocalNotificationsPlugin>()
+      ?.createNotificationChannel(channel);
+}
+
+Future<void> showRangeNotification({
+  required bool isOutside,
+  required bool isOffline,
+}) async {
+  try {
+    const AndroidNotificationDetails androidDetails =
+    AndroidNotificationDetails(
+      rangeNotificationChannelId,
+      'Employee Range Alerts',
+      channelDescription: 'Employee location range notifications',
+      importance: Importance.high,
+      priority: Priority.high,
+      playSound: true,
+      enableVibration: true,
+      autoCancel: true,
+      icon: '@mipmap/ic_launcher',
+    );
+
+    const NotificationDetails details =
+    NotificationDetails(android: androidDetails);
+
+    String title;
+    String message;
+    int notificationId;
+
+    if (isOutside && isOffline) {
+      title = 'Outside in Offline';
+      message = 'You are outside the assigned range. Internet is unavailable.';
+      notificationId = outOfRangeNotificationId;
+    } else if (!isOutside && isOffline) {
+      title = 'Range In Offline';
+      message = 'You have returned inside the assigned range. Internet is unavailable.';
+      notificationId = inRangeNotificationId;
+    } else if (isOutside) {
+      title = 'Out of Range';
+      message = 'You are outside the assigned location range.';
+      notificationId = outOfRangeNotificationId;
+    } else {
+      title = 'Back In Range';
+      message = 'You have returned inside the assigned location range.';
+      notificationId = inRangeNotificationId;
+    }
+
+    await rangeNotifications.show(
+      notificationId,
+      title,
+      message,
+      details,
+    );
+  } catch (e) {
+    debugPrint('Range notification error: $e');
+  }
+}
 // -----------------------------------------------------------------------------
 // Start / stop service
 // -----------------------------------------------------------------------------
@@ -126,7 +218,7 @@ Future<void> stopBackgroundService() async {
 @pragma('vm:entry-point')
 Future<bool> onStart(ServiceInstance serviceInstance) async {
   DartPluginRegistrant.ensureInitialized();
-
+  await initializeRangeNotifications();
   _locationTimer?.cancel();
   _locationTimer = null;
   _isLocationProcessing = false;
@@ -297,7 +389,7 @@ Future<void> _checkEmployeeRange(Position position) async {
     final bool isInside = isInsidePolygon(currentLocation, rangePoints);
 
     // rangeId identifies the admin polygon. isUserOut is a separate status.
-    final int rangeId = employeeRangeId;
+    const int rangeId = employeeRangeId;
     final int isUserOut = isInside ? 0 : 1;
 
     final bool hasExitRecord =
@@ -305,6 +397,12 @@ Future<void> _checkEmployeeRange(Position position) async {
       employeeId: employeeId,
       rangeId: rangeId,
     );
+
+    final connectivity = await Connectivity().checkConnectivity();
+
+    final bool isOffline =
+    connectivity.contains(ConnectivityResult.none);
+
 
     // EMPLOYEE INSIDE
     if (isInside) {
@@ -331,7 +429,7 @@ Future<void> _checkEmployeeRange(Position position) async {
         employeeId: employeeId,
         rangeId: rangeId,
       );
-
+      await showRangeNotification(isOutside: false,isOffline: isOffline,);
       if (kDebugMode) {
         debugPrint('Return event sent/queued. Active exit state cleared.');
       }
@@ -381,7 +479,7 @@ Future<void> _checkEmployeeRange(Position position) async {
       debugPrint('Exit event failed and was not queued; active state reset.');
       return;
     }
-
+    await showRangeNotification(isOutside: true,isOffline: isOffline,);
     if (kDebugMode) {
       debugPrint('Exit event sent/queued. Active exit state retained.');
     }
