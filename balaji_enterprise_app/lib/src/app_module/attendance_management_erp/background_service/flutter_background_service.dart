@@ -44,6 +44,8 @@ final FlutterBackgroundService service = FlutterBackgroundService();
 Timer? _locationTimer;
 bool _isServiceRunning = false;
 bool _isLocationProcessing = false;
+bool? _lastKnownOutside;
+bool? _lastKnownOffline;
 DateTime? _lastGpsDisabledAttemptTime;
 int checkGpsStatus = 0;
 
@@ -168,6 +170,36 @@ Future<void> showRangeNotification({
     debugPrint('Range notification error: $e');
   }
 }
+
+
+Future<void> checkAndShowRangeNotification({
+  required bool isOutside,
+  required bool isOffline,
+}) async {
+  bool shouldNotify = false;
+
+  if (isOutside) {
+    if (_lastKnownOutside != true ||
+        _lastKnownOffline != isOffline) {
+      shouldNotify = true;
+    }
+  } else {
+    if (_lastKnownOutside == true) {
+      shouldNotify = true;
+    }
+  }
+
+  if (shouldNotify) {
+    await showRangeNotification(
+      isOutside: isOutside,
+      isOffline: isOffline,
+    );
+  }
+
+  _lastKnownOutside = isOutside;
+  _lastKnownOffline = isOffline;
+}
+
 // -----------------------------------------------------------------------------
 // Start / stop service
 // -----------------------------------------------------------------------------
@@ -403,6 +435,10 @@ Future<void> _checkEmployeeRange(Position position) async {
     final bool isOffline =
     connectivity.contains(ConnectivityResult.none);
 
+    await checkAndShowRangeNotification(
+      isOutside: !isInside,
+      isOffline: isOffline,
+    );
 
     // EMPLOYEE INSIDE
     if (isInside) {
