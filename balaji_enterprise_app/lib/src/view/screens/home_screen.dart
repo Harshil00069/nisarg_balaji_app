@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_face_detection_balaji_enterprise/src/app_module/area_mesurement/screen/employee_range_map_screen.dart';
 import 'package:flutter_face_detection_balaji_enterprise/src/app_module/attendance_management_erp/background_service/background_service_state.dart';
+import 'package:flutter_face_detection_balaji_enterprise/src/app_module/attendance_management_erp/background_service/flutter_background_service.dart';
 import 'package:flutter_face_detection_balaji_enterprise/src/app_module/attendance_management_erp/custom_widget/battery_optimization_screen.dart';
 import 'package:flutter_face_detection_balaji_enterprise/src/app_module/attendance_management_erp/custom_widget/location_disclosure_screen.dart';
 import 'package:flutter_face_detection_balaji_enterprise/src/app_module/attendance_management_erp/screen/attendance_management_screen.dart';
@@ -81,9 +82,14 @@ class _HomeScreenState extends State<HomeScreen> {
           await ApiService().getMobileDataApi(loginResponse?.data?.roleId) ??
               [];
 
-      mobileDataList.add(MobileDataItem(menuName: "Mesure setup",));
-      mobileDataList.add(MobileDataItem(menuName: "Show Mesure",));
-      mobileDataList.add(MobileDataItem(menuName: "Punch In-out",));
+      if(loginResponse?.data!.isAdmin == true || loginResponse?.data!.isSuperviserLogin == true ){
+        mobileDataList.add(MobileDataItem(menuName: "Mesure setup",));
+      }
+
+      if(loginResponse?.data!.isEmployeeLogin == true){
+        mobileDataList.add(MobileDataItem(menuName: "Punch In-out",));
+      }
+
     }
     setState(() {
       loading = false;
@@ -472,7 +478,7 @@ class _HomeScreenState extends State<HomeScreen> {
         return;
       }
 
-      await BackgroundServiceState.setTrackingEnabled(true);
+      await BackgroundServiceState.setTrackingEnabled(loginResponse?.data!.isEmployeeLogin == true);
 
       // 2. Check GPS enabled
       final isLocationEnabled =
@@ -483,31 +489,34 @@ class _HomeScreenState extends State<HomeScreen> {
         return;
       }
 
-      // 3. Check location permission
-      LocationPermission permission =
-      await Geolocator.checkPermission();
+      if(loginResponse?.data!.isEmployeeLogin == true){
+        // 3. Check location permission
+        LocationPermission permission =
+        await Geolocator.checkPermission();
 
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-
-      if (permission != LocationPermission.always) {
-        debugPrint("Always location permission not granted");
-
-        if (mounted) {
-          Get.to(
-                () => LocationDisclosureScreen(
-              onSuccessfullyGrantPermission: () async {
-                await checkLocationPermissionMethod();
-              },
-            ),
-          );
+        if (permission == LocationPermission.denied) {
+          permission = await Geolocator.requestPermission();
         }
-        return;
+
+        if (permission != LocationPermission.always) {
+          debugPrint("Always location permission not granted");
+
+          if (mounted) {
+            Get.to(
+                  () => LocationDisclosureScreen(
+                onSuccessfullyGrantPermission: () async {
+                  await checkLocationPermissionMethod();
+                },
+              ),
+            );
+          }
+          return;
+        }
+
+        // 4. Check battery optimization
+        await checkLocationPermissionMethod();
       }
 
-      // 4. Check battery optimization
-      await checkLocationPermissionMethod();
 
     } catch (e) {
       debugPrint("Location permission error: $e");
@@ -555,97 +564,20 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
- /* Future<void> checkLocationPermissionCondition() async {
-    final isAndroid = Platform.isAndroid;
-    const isRelease = kDebugMode;
-    // final isSalesUser = dashCtrl.isSalesEmployee.value;
-
-    // Employee is NOT eligible for background tracking
-
-    if (!isAndroid ) {
-      await BackgroundServiceState.setTrackingEnabled(false);
-      await stopBackgroundService();
-      return;
-    }
-
-    // Employee is eligible
-    await BackgroundServiceState.setTrackingEnabled(true);
-
-    final checkLocation = await PermissionUtil.requestEnableLocation();
-
-    if (!checkLocation) {
-      await stopBackgroundService();
-      return;
-    }
-
-    final permission = await Geolocator.checkPermission();
-
-    if (permission == LocationPermission.denied ||
-        permission == LocationPermission.deniedForever ||
-        permission != LocationPermission.always) {
-      Get.to(
-            () => LocationDisclosureScreen(
-          onSuccessfullyGrantPermission: () {
-            checkLocationPermissionMethod();
-          },
-        ),
-      );
-    } else {
-      checkLocationPermissionMethod();
-    }
-  }
-
-  Future<void> checkLocationPermissionMethod() async {
-    // await dashCtrl.getTodayPunchInOutTimeApi();
-    // if ((dashCtrl.punchDetail.value.inTime.trim().isEmpty) &&
-    //     (dashCtrl.punchDetail.value.outTime.trim().isEmpty)) {
-    //   await manageBackgroundService('punchNotFound');
-    // } else if ((dashCtrl.punchDetail.value.inTime.trim().isNotEmpty) &&
-    //     (dashCtrl.punchDetail.value.outTime.trim().isEmpty)) {
-    //   await manageBackgroundService('punchFound');
-    // } else {
-    //   await manageBackgroundService('');
-    // }
-    await manageBackgroundService('');
-  }
-
-  Future<void> manageBackgroundService(String localStatus) async {
-    try {
-      var checkBatteryOptimize = Platform.isAndroid
-          ? await DisableBatteryOptimizationLatest
-          .isBatteryOptimizationDisabled ??
-          false
-          : true;
-      if (!checkBatteryOptimize) {
-        if (mounted) {
-          Get.to(
-                () => BatteryOptimizationScreen(
-              onSuccessfullyGrantPermission: () =>
-                  checkLocationPermissionMethod(),
-            ),
-          );
-        }
-        // if (localStatus == "punchFound") {
-        //   startBackgroundService();
-        // } else {
-        //   stopBackgroundService();
-        // }
-      }
-    } catch (e) {
-      // print("EE=> ${e}");
-      // if (localStatus == "punchNotFound") {
-      //   // Get.to(() => const AttendanceManagementScreen());
-      // } else if (localStatus == "punchFound") {
-      //   startBackgroundService();
-      // } else {
-      //   stopBackgroundService();
-      // }
-      // return;
-    }
-  }*/
-
   void checkService() async {
+    final DatabaseHelper databaseHelper = DatabaseHelper();
       bool isRunning = await isBackgroundServiceRunning();
+
+      if(isRunning){
+        if(loginResponse?.data!.isEmployeeLogin ==  false){
+        await  stopBackgroundService();
+        }else{
+          final user = await databaseHelper.fetchStoredUser();
+          if(user.baseUrl.isEmpty){
+            await  stopBackgroundService();
+          }
+        }
+      }
 
     if (isRunning) {
       print("Background service is running");

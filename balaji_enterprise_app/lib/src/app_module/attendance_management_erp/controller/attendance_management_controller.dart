@@ -168,10 +168,12 @@ class AttendanceManagementController extends GetxController {
 
       if (response.status == 1) {
         if (punchInOrOutFlag == "0") {
+          await databaseHelper.updateBaseUrl('1');
           await startBackgroundService();
           // punchDetail.value.erpInAttendance = response.punchDateAndTime;
           update();
         } else if (punchInOrOutFlag == "1") {
+          await databaseHelper.updateBaseUrl('');
           await stopBackgroundService();
           // punchDetail.value.erpOutAttendance = response.punchDateAndTime;
           update();

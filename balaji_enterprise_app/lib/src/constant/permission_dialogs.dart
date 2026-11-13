@@ -8,33 +8,6 @@ import 'package:permission_handler/permission_handler.dart';
 import 'app_dialogs.dart';
 
 class PermissionUtil {
-  // static Future<bool> checkLocationPermission() async {
-  //   var checkLocationEnable = await Geolocator.isLocationServiceEnabled();
-  //   if (!checkLocationEnable) {
-  //     showToast(message: 'Please Turn ON Your Location');
-  //     return false;
-  //   }
-  //
-  //   var permission = await Geolocator.checkPermission();
-  //
-  //   if (permission == LocationPermission.denied) {
-  //     bool checkPermission = false;
-  //     await Geolocator.requestPermission().then((value) {
-  //       if (value == LocationPermission.denied ||
-  //           value == LocationPermission.deniedForever) {
-  //         checkPermission = false;
-  //       } else {
-  //         checkPermission = true;
-  //       }
-  //     });
-  //     return checkPermission;
-  //   } else if (permission == LocationPermission.deniedForever) {
-  //     Geolocator.openAppSettings();
-  //     return false;
-  //   } else {
-  //     return true;
-  //   }
-  // }
 
   static Future<bool> requestEnableLocation() async {
     try {

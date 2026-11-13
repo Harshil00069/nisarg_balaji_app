@@ -919,6 +919,30 @@ class DatabaseHelper {
     }
   }
 
+
+  Future<bool> updateBaseUrl(String baseUrl) async {
+    try {
+      final db = await database;
+
+      await _createUserDetailTable(db);
+
+      final result = await db.update(
+        userTable,
+        {
+          'baseUrl': baseUrl,
+        },
+      );
+
+      debugPrint('BaseUrl updated: $baseUrl');
+
+      return result > 0;
+    } catch (e, stackTrace) {
+      debugPrint('Update baseUrl error: $e');
+      debugPrintStack(stackTrace: stackTrace);
+      return false;
+    }
+  }
+
   // ============================================================
   // GET OFFLINE LOCATIONS
   // ============================================================
