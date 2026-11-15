@@ -84,6 +84,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if(loginResponse?.data!.isAdmin == true || loginResponse?.data!.isSuperviserLogin == true ){
         mobileDataList.add(MobileDataItem(menuName: "Mesure setup",));
+        mobileDataList.add(MobileDataItem(menuName: "Show Mesure",));
       }
 
       if(loginResponse?.data!.isEmployeeLogin == true){

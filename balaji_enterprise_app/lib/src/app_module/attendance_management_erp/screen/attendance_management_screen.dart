@@ -87,7 +87,15 @@ class _AddAttendanceScreenState extends State<AddAttendanceScreen> {
                       ),
                     ),
                   ),
-                  Obx(
+                  Obx(()=> _attendanceManagementController.isPunchStatusLoading.value ? const CircularProgressIndicator():
+                      Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      punchInButtonWidget(),
+                      punchOutButtonWidget(),
+                    ],
+                  )),
+                 /* Obx(
                     () => !_attendanceManagementController.isOnWorkPlace.value
                         ? Padding(
                             padding: const EdgeInsets.all(16.0),
@@ -111,14 +119,8 @@ class _AddAttendanceScreenState extends State<AddAttendanceScreen> {
                                       size: 16, color: Colors.red.shade800)),
                             ),
                           )
-                        : Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                            children: [
-                              punchInButtonWidget(),
-                              punchOutButtonWidget(),
-                            ],
-                          ),
-                  ),
+                        :
+                  ),*/
                   const SizedBox(
                     height: 16,
                   ),

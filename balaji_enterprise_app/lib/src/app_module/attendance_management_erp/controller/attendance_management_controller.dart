@@ -230,7 +230,7 @@ class AttendanceManagementController extends GetxController {
           companyId: companyId, authToken: token);
       if (response.status == 1) {
         locationDataByCompany.addAll(response.data!.locationData);
-        isOnWorkPlace.value = await checkUserInRange();
+        // isOnWorkPlace.value = await checkUserInRange();
 
         await DatabaseHelper().saveAdminRange(
           rangeId: 1,

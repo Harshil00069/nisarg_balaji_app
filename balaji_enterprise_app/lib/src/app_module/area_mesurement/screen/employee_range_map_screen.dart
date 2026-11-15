@@ -1,6 +1,11 @@
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_face_detection_balaji_enterprise/src/api_manager/api_implementor.dart';
+import 'package:flutter_face_detection_balaji_enterprise/src/app_module/attendance_management_erp/model/location_track_by_company_data_model.dart';
 import 'package:flutter_face_detection_balaji_enterprise/src/constant/database_helper.dart';
+import 'package:get/get_rx/src/rx_types/rx_types.dart';
+import 'package:get/get_state_manager/src/rx_flutter/rx_obx_widget.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 
@@ -22,6 +27,11 @@ class _EmployeeRangeMapScreenState
   // Use the same range ID that the admin saved.
   final int rangeId = 1;
 
+  RxList<LocationDatum> locationDataByCompany = <LocationDatum>[].obs;
+
+  final DatabaseHelper databaseHelper = DatabaseHelper();
+  RxBool isPunchStatusLoading = false.obs;
+
   @override
   void initState() {
     super.initState();
@@ -29,6 +39,8 @@ class _EmployeeRangeMapScreenState
   }
 
   Future<void> loadAdminRange() async {
+   await  locationDataByCompanyListApi();
+
     final points = await _dbHelper.fetchAdminRange(rangeId);
 
     if (!mounted) return;
@@ -38,6 +50,41 @@ class _EmployeeRangeMapScreenState
       isLoading = false;
     });
   }
+
+
+  Future<void> locationDataByCompanyListApi() async {
+    locationDataByCompany.clear();
+    await DatabaseHelper().clearAdminRangeTable();
+    final user = await databaseHelper.fetchStoredUser();
+    final String companyId = user.companyId;
+    final String token = user.token;
+    isPunchStatusLoading.value = true;
+    // punchInOutStatus.value = 0;
+
+    try {
+      var response = await ApiImplementor.getLocationByCompanyApiImplementer(
+          companyId: companyId, authToken: token);
+      if (response.status == 1) {
+        locationDataByCompany.addAll(response.data!.locationData);
+        // isOnWorkPlace.value = await checkUserInRange();
+
+        await DatabaseHelper().saveAdminRange(
+          rangeId: 1,
+          name: 'Office',
+          rangePoints: locationDataByCompany,
+        );
+      }
+      isPunchStatusLoading.value = false;
+      return;
+    } catch (e) {
+      // punchInOutStatus.value = 0;
+      isPunchStatusLoading.value = false;
+      if (kDebugMode) {
+        print(e);
+      }
+    }
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -71,7 +118,7 @@ class _EmployeeRangeMapScreenState
       appBar: AppBar(
         title: const Text('Employee Range Map'),
       ),
-      body: GoogleMap(
+      body: Obx(()=> isPunchStatusLoading.value ? const CircularProgressIndicator()  : GoogleMap(
         initialCameraPosition: CameraPosition(
           target: rangePoints.first,
           zoom: 17,
@@ -89,7 +136,7 @@ class _EmployeeRangeMapScreenState
         },
         myLocationEnabled: false,
         zoomControlsEnabled: true,
-      ),
+      )),
     );
   }
 }
