@@ -68,7 +68,103 @@ class AttendanceManagementController extends GetxController {
     controller.dispose();
   }
 
+
   Future<void> getCurrentLocation() async {
+    try {
+      hasErrorGoogleMap.value = false;
+      isLoadingGoogleMap.value = true;
+
+      final checkLocation =
+      await PermissionUtil.requestEnableLocation();
+
+      if (!checkLocation) {
+        isLoadingGoogleMap.value = false;
+        hasErrorGoogleMap.value = true;
+
+        Get.defaultDialog(
+          title: 'Required Permission!',
+          middleText: 'Please enable location permission and GPS.',
+          textConfirm: 'OPEN SETTINGS',
+          textCancel: 'Cancel',
+          onConfirm: () async {
+            await Geolocator.openAppSettings();
+            Get.back();
+          },
+          onCancel: () => Get.back(),
+        );
+        return;
+      }
+
+      // Request high-accuracy GPS location
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.bestForNavigation,
+          distanceFilter: 0,
+          timeLimit: Duration(seconds: 20),
+        ),
+      );
+
+      currentPositionData = position;
+
+      // Check GPS accuracy
+      debugPrint('========== GPS DETAILS ==========');
+      debugPrint('Latitude: ${position.latitude}');
+      debugPrint('Longitude: ${position.longitude}');
+      debugPrint('Accuracy: ${position.accuracy} meters');
+      debugPrint('Timestamp: ${position.timestamp}');
+      debugPrint('Speed: ${position.speed}');
+      debugPrint('=================================');
+
+      final currentLatLng = LatLng(
+        position.latitude,
+        position.longitude,
+      );
+
+      final currentPosition = CameraPosition(
+        target: currentLatLng,
+        zoom: 19,
+      );
+
+      // Get address
+      final address = await GeocodingPlatform.instance!
+          .placemarkFromCoordinates(
+        position.latitude,
+        position.longitude,
+      );
+
+      if (address.isNotEmpty) {
+        currentLocationData = address.first;
+        currentCity.value = address.first.locality ?? '';
+
+        fullAddress.value =
+        "${address.first.street},"
+            "${address.first.subLocality},"
+            "${address.first.name},"
+            "${address.first.locality},"
+            "${address.first.administrativeArea},"
+            "${address.first.postalCode}";
+      }
+
+      // Move camera to actual GPS position
+      if (googleMapController.isCompleted) {
+        final controller = await googleMapController.future;
+
+        await controller.animateCamera(
+          CameraUpdate.newCameraPosition(currentPosition),
+        );
+      }
+
+      isLoadingGoogleMap.value = false;
+    } catch (e, stackTrace) {
+      debugPrint('Location Error: $e');
+      debugPrint('$stackTrace');
+
+      isLoadingGoogleMap.value = false;
+      hasErrorGoogleMap.value = true;
+    }
+  }
+
+/*  Future<void> getCurrentLocation() async {
     try {
       hasErrorGoogleMap.value = false;
       isLoadingGoogleMap.value = true;
@@ -123,7 +219,7 @@ class AttendanceManagementController extends GetxController {
       // print("Map Load $isLoadingGoogleMap ANd Has Error $hasErrorGoogleMap");
       return;
     }
-  }
+  }*/
 
   Future<void> savePunchInData({required String punchInOrOutFlag}) async {
     try {

@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter_face_detection_balaji_enterprise/src/app_module/attendance_management_erp/background_service/flutter_background_service.dart';
 import 'package:flutter_face_detection_balaji_enterprise/src/app_module/attendance_management_erp/controller/attendance_management_controller.dart';
 import 'package:flutter_face_detection_balaji_enterprise/src/app_module/attendance_management_erp/custom_widget/camera_capture_widget.dart';
 import 'package:flutter_face_detection_balaji_enterprise/src/constant/app_dialogs.dart';
@@ -87,40 +86,16 @@ class _AddAttendanceScreenState extends State<AddAttendanceScreen> {
                       ),
                     ),
                   ),
-                  Obx(()=> _attendanceManagementController.isPunchStatusLoading.value ? const CircularProgressIndicator():
-                      Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      punchInButtonWidget(),
-                      punchOutButtonWidget(),
-                    ],
-                  )),
-                 /* Obx(
-                    () => !_attendanceManagementController.isOnWorkPlace.value
-                        ? Padding(
-                            padding: const EdgeInsets.all(16.0),
-                            child: Container(
-                              padding:
-                                  const EdgeInsets.symmetric(vertical: 20.0),
-                              decoration: BoxDecoration(
-                                  color: AppColors.white,
-                                  borderRadius: BorderRadius.circular(12),
-                                  boxShadow: const [
-                                    BoxShadow(
-                                      color: AppColors.primary,
-                                      blurRadius: 4.0,
-                                      spreadRadius: 1.0,
-                                    )
-                                  ]),
-                              child: Text(
-                                  "You Can Not Fill Attendance Due to Out Off Working Range",
-                                  textAlign: TextAlign.center,
-                                  style: AppFonts.text(
-                                      size: 16, color: Colors.red.shade800)),
-                            ),
-                          )
-                        :
-                  ),*/
+                  Obx(() =>
+                      _attendanceManagementController.isPunchStatusLoading.value
+                          ? const CircularProgressIndicator()
+                          : Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                              children: [
+                                punchInButtonWidget(),
+                                punchOutButtonWidget(),
+                              ],
+                            )),
                   const SizedBox(
                     height: 16,
                   ),
@@ -130,30 +105,13 @@ class _AddAttendanceScreenState extends State<AddAttendanceScreen> {
                     endIndent: 14,
                     thickness: 0.9,
                   ),
-                  // Padding(
-                  //   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                  //   child: Text(
-                  //     'Today Punch In - Out History ($todayDate)',
-                  //     style: AppFonts.bodyText1(color: Colors.green.shade800),
-                  //   ),
-                  // ),
-                  // Text(
-                  //   LoginUserDetail.erpUser.value.punchInDnt,
-                  //   style: AppFonts.label1(color: AppColors.black),
-                  // ),
-                  // const SizedBox(
-                  //   height: 6,
-                  // ),
-                  // Text(
-                  //   LoginUserDetail.erpUser.value.punchOutDnt,
-                  //   style: AppFonts.label1(color: AppColors.black),
-                  // ),
                 ],
               ),
               Obx(
                 () => _attendanceManagementController.isPunchInLoading.value ||
                         _attendanceManagementController
-                            .isPunchStatusLoading.value
+                            .isPunchStatusLoading.value ||
+                        _attendanceManagementController.isLoadingGoogleMap.value
                     ? Positioned.fill(
                         child: Container(
                           color: Colors.black.withValues(alpha: 0.5),
@@ -224,7 +182,7 @@ class _AddAttendanceScreenState extends State<AddAttendanceScreen> {
                   onPressed: () {
                     Get.back();
                   },
-                  msg: "Your Today's Punch In Done}");
+                  msg: "Your Today's Punch In Done");
             }
           },
           child: Container(
@@ -392,12 +350,6 @@ class _AddAttendanceScreenState extends State<AddAttendanceScreen> {
         elevation: 2,
         child: InkWell(
           onTap: () async {
-            /* stopBackgroundService();
-            final databaseHelper = DatabaseHelper();
-            final user = await databaseHelper.fetchStoredUser();
-            final employeeId = user.empId;
-            await databaseHelper.clearActiveRangeExit(employeeId: employeeId, rangeId: 1);*/
-
             if (_attendanceManagementController.punchInOutStatus.value == 1) {
               appDoneDialog(
                 onPressed: () {

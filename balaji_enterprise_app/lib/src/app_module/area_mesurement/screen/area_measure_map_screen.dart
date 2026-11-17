@@ -311,11 +311,11 @@ class _MeasureMapScreenState extends State<MeasureMapScreen> {
                   mapType: mapType,
                   initialCameraPosition: CameraPosition(
                     target:
-                    currentLocation ?? LatLng(22.2470433, 70.7972683),
+                    currentLocation ?? const LatLng(22.2470433, 70.7972683),
                     zoom: 19.151926040649414,
                   ),
                   myLocationEnabled: true,
-                  myLocationButtonEnabled: true,
+                  myLocationButtonEnabled: false,
                   onTap: (position) => _onTapPoint(position),
                   markers: markers,
                   polygons: polygonPoints.length >= 3
@@ -334,6 +334,19 @@ class _MeasureMapScreenState extends State<MeasureMapScreen> {
               _buildOnTapMeasureButton(),
               _buildActionButton(),
             ],
+          ),
+          Positioned(
+            top: 15,
+            right: 15,
+            child: FloatingActionButton.small(
+              heroTag: "resetLocation",
+              backgroundColor: Colors.white,
+              foregroundColor: Colors.black,
+              onPressed: () {
+                _determinePosition();
+              },
+              child: const Icon(Icons.my_location),
+            ),
           ),
           Obx(() => isSubmitLoading.value
               ? Positioned.fill(

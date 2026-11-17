@@ -31,7 +31,7 @@ class _EmployeeRangeMapScreenState
 
   final DatabaseHelper databaseHelper = DatabaseHelper();
   RxBool isPunchStatusLoading = false.obs;
-
+  MapType mapType = MapType.hybrid;
   @override
   void initState() {
     super.initState();
@@ -119,6 +119,7 @@ class _EmployeeRangeMapScreenState
         title: const Text('Employee Range Map'),
       ),
       body: Obx(()=> isPunchStatusLoading.value ? const CircularProgressIndicator()  : GoogleMap(
+        mapType: mapType,
         initialCameraPosition: CameraPosition(
           target: rangePoints.first,
           zoom: 17,

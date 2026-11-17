@@ -82,12 +82,10 @@ class _HomeScreenState extends State<HomeScreen> {
           await ApiService().getMobileDataApi(loginResponse?.data?.roleId) ??
               [];
 
-      if(loginResponse?.data!.isAdmin == true || loginResponse?.data!.isSuperviserLogin == true ){
+      if(loginResponse?.data!.isAdmin == true){
         mobileDataList.add(MobileDataItem(menuName: "Mesure setup",));
         mobileDataList.add(MobileDataItem(menuName: "Show Mesure",));
-      }
-
-      if(loginResponse?.data!.isEmployeeLogin == true){
+      }else{
         mobileDataList.add(MobileDataItem(menuName: "Punch In-out",));
       }
 
@@ -229,6 +227,7 @@ class _HomeScreenState extends State<HomeScreen> {
         actions: [
           GestureDetector(
               onTap: () async {
+                await  stopBackgroundService();
                 final prefs = await SharedPreferences.getInstance();
                 await prefs.clear();
                 await DatabaseHelper().deleteUserData();
