@@ -164,63 +164,6 @@ class AttendanceManagementController extends GetxController {
     }
   }
 
-/*  Future<void> getCurrentLocation() async {
-    try {
-      hasErrorGoogleMap.value = false;
-      isLoadingGoogleMap.value = true;
-      var checkLocation = await PermissionUtil.requestEnableLocation();
-      if (checkLocation) {
-        var position = await Geolocator.getCurrentPosition();
-        currentPositionData = position;
-        var currentPosition = CameraPosition(
-          target: LatLng(position.latitude, position.longitude),
-          zoom: 19.151926040649414,
-        );
-
-        var address = await GeocodingPlatform.instance!
-            .placemarkFromCoordinates(position.latitude, position.longitude);
-        currentLocationData = address.first;
-        currentCity.value = address.first.locality ?? '';
-        fullAddress.value =
-            "${currentLocationData!.street},${currentLocationData!.subLocality},${currentLocationData!.name},${currentLocationData!.locality},${currentLocationData!.administrativeArea},${currentLocationData!.postalCode}";
-
-        final GoogleMapController controller = await googleMapController.future;
-        controller.animateCamera(
-          CameraUpdate.newCameraPosition(currentPosition),
-        );
-        isLoadingGoogleMap.value = false;
-        // print("Map Load $isLoadingGoogleMap ANd Has Error $hasErrorGoogleMap");
-        return;
-      } else {
-        isLoadingGoogleMap.value = false;
-        hasErrorGoogleMap.value = true;
-        Get.defaultDialog(
-          onWillPop: () async {
-            Get.back();
-            return false;
-          },
-          radius: 6.0,
-          title: 'Required Permission!',
-          middleText:
-              'Location Permission Required to access this feature,You have to manually allow location permission by click on open setting button and find locations and then allow permission!',
-          textConfirm: 'OPEN SETTINGS',
-          textCancel: 'Cancel',
-          onConfirm: () {
-            Geolocator.openAppSettings().then((value) => Get.back());
-          },
-          onCancel: () => Get.back(),
-        );
-        // print("Map Load $isLoadingGoogleMap ANd Has Error $hasErrorGoogleMap");
-        return;
-      }
-    } catch (e) {
-      isLoadingGoogleMap.value = false;
-      hasErrorGoogleMap.value = true;
-      // print("Map Load $isLoadingGoogleMap ANd Has Error $hasErrorGoogleMap");
-      return;
-    }
-  }*/
-
   Future<void> savePunchInData({required String punchInOrOutFlag}) async {
     try {
       final user = await databaseHelper.fetchStoredUser();
@@ -228,11 +171,16 @@ class AttendanceManagementController extends GetxController {
       final String companyId = user.companyId;
       final String token = user.token;
 
+      final List<LatLng> rangePoints = await databaseHelper.fetchAdminRange(employeeRangeId);
+
       if (pickImage.value.path.isEmpty) {
         showToast(message: 'Please Capture Your Picture');
         return;
       } else if (currentLocationData == null || currentPositionData == null) {
         showToast(message: 'Please Map Reload To Fetch Your Proper Location');
+        return;
+      } else if(rangePoints.isEmpty){
+        showToast(message: 'Contact to Admin');
         return;
       }
       var tmpcurDt = currentLocationData!;
@@ -266,12 +214,10 @@ class AttendanceManagementController extends GetxController {
         if (punchInOrOutFlag == "0") {
           await databaseHelper.updateBaseUrl('1');
           await startBackgroundService();
-          // punchDetail.value.erpInAttendance = response.punchDateAndTime;
           update();
         } else if (punchInOrOutFlag == "1") {
           await databaseHelper.updateBaseUrl('');
           await stopBackgroundService();
-          // punchDetail.value.erpOutAttendance = response.punchDateAndTime;
           update();
         } else {}
         Get.back();
@@ -327,13 +273,15 @@ class AttendanceManagementController extends GetxController {
       if (response.status == 1) {
         locationDataByCompany.addAll(response.data!.locationData);
         // isOnWorkPlace.value = await checkUserInRange();
-
-        await DatabaseHelper().saveAdminRange(
-          rangeId: 1,
-          name: 'Office',
-          rangePoints: locationDataByCompany,
-        );
+          if(locationDataByCompany.isNotEmpty){
+            await DatabaseHelper().saveAdminRange(
+              rangeId: 1,
+              name: 'Office',
+              rangePoints: locationDataByCompany,
+            );
+          }
       }
+      locationDataByCompany.clear();
       isPunchStatusLoading.value = false;
       return;
     } catch (e) {
@@ -368,7 +316,7 @@ class AttendanceManagementController extends GetxController {
     };
   }
 
-  Future<bool> checkUserInRange() async {
+  /*Future<bool> checkUserInRange() async {
     // Get current user location
     Position position = await Geolocator.getCurrentPosition(
       locationSettings: const LocationSettings(
@@ -378,7 +326,7 @@ class AttendanceManagementController extends GetxController {
 
     double userLat = position.latitude;
     double userLong = position.longitude;
- print("userLat= ${userLat} =userLong  ${userLong}");
+
     // Allowed radius in meters
     double allowedDistance = 50;
 
@@ -390,7 +338,6 @@ class AttendanceManagementController extends GetxController {
         location.long,
       );
 
-      print("Distance: $distance meters");
 
       if (distance <= allowedDistance) {
         return true;
@@ -398,5 +345,5 @@ class AttendanceManagementController extends GetxController {
     }
 
     return false;
-  }
+  }*/
 }

@@ -49,9 +49,9 @@ class ApiService {
     }
   }
 
-  Future<List<MobileDataItem>?> getMobileDataApi(int? roleId) async {
+  Future<List<MobileDataItem>?> getMobileDataApi(int? roleId,{int? companyId}) async {
     final url = Uri.parse(
-        'http://13.127.180.155:8088/Mobile/getmobiledata?RoleId=$roleId');
+        'http://13.127.180.155:8088/Mobile/getmobiledata?RoleId=$roleId&CompanyId=${companyId ?? ''}');
 
     try {
       final response = await http.get(url);

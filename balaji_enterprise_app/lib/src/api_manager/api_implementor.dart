@@ -1,31 +1,11 @@
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_face_detection_balaji_enterprise/src/app_module/attendance_management_erp/model/check_punch_in_out_data_model.dart';
 import 'package:flutter_face_detection_balaji_enterprise/src/app_module/attendance_management_erp/model/location_track_by_company_data_model.dart';
 import 'package:flutter_face_detection_balaji_enterprise/src/app_module/attendance_management_erp/model/punch_in_out_model.dart';
-
 import 'api_config_erp_dio.dart';
 import 'api_user_read_error_handler.dart';
 
 class ApiImplementor {
-  static void logResponse(Object object) {
-    if (kDebugMode) {
-      print("Response : $object");
-    }
-  }
-
-  static void logUrl(Object object) {
-    if (kDebugMode) {
-      print("URL : $object");
-    }
-  }
-
-  static void logBody(Object object) {
-    if (kDebugMode) {
-      print("Body : $object");
-    }
-  }
-
   static Future<PunchInOutModel> insertPunchInOutApi({
     required String latitude,
     required String longitude,
@@ -46,7 +26,6 @@ class ApiImplementor {
         'punch_in_out_flag': punchInOutFlag,
         'gps_flag': gpsFlag,
       };
-      // print("1930 body=> $body");
       final response = await ErpDio.getDioClient().post(
         options: Options(
           contentType: Headers.jsonContentType,

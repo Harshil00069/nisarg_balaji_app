@@ -7,16 +7,6 @@ import 'api_url.dart';
 import 'api_user_read_error_handler.dart';
 
 class ErpDio {
-  // static Dio getDioClient({int delay = 20000}) {
-  //   return Dio(
-  //     BaseOptions(
-  //       baseUrl: ApiUrls.erpBaseUrl,
-  //       connectTimeout: Duration(milliseconds: delay),
-  //       receiveTimeout: Duration(milliseconds: delay),
-  //     ),
-  //   );
-  // }
-
   static Dio getDioClient({int delay = 20000}) {
     final dio = Dio(
       BaseOptions(
@@ -30,16 +20,6 @@ class ErpDio {
 
     return dio;
   }
-
-  // static Map<String, String> commonBodyMap() {
-  //   Map<String, String> body = {
-  //     "app_version": "${LoginUserDetail.appVersion.value}",
-  //     "android_id": LoginUserDetail.deviceId.value,
-  //     "device_id": "0",
-  //     "key": ApiUrls.apiKey,
-  //   };
-  //   return body;
-  // }
 
   static Future<dynamic> clientPost(
     String apiName, {

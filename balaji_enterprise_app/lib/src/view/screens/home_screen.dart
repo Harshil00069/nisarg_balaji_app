@@ -79,7 +79,7 @@ class _HomeScreenState extends State<HomeScreen> {
       debugPrint("loginResponse: ${loginResponse?.toJson().toString()}");
       debugPrint("loginResponse: ${loginResponse?.data?.displayUserName}");
       mobileDataList =
-          await ApiService().getMobileDataApi(loginResponse?.data?.roleId) ??
+          await ApiService().getMobileDataApi(loginResponse?.data?.roleId,companyId: loginResponse?.data?.companyId) ??
               [];
 
       if(loginResponse?.data!.isAdmin == true){

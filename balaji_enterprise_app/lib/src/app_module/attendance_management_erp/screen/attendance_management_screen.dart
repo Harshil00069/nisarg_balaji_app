@@ -24,11 +24,13 @@ class _AddAttendanceScreenState extends State<AddAttendanceScreen> {
 
   String todayDate = DateFormat('dd-MM-yyyy').format(DateTime.now());
 
+
   @override
   void initState() {
     super.initState();
     _attendanceManagementController.initializeApiData();
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -171,7 +173,13 @@ class _AddAttendanceScreenState extends State<AddAttendanceScreen> {
                 -1) {
               if (_attendanceManagementController.isLoadingGoogleMap.isFalse &&
                   _attendanceManagementController.hasErrorGoogleMap.isFalse) {
-                showDialogForPunchIn();
+                if(_attendanceManagementController.locationDataByCompany.isNotEmpty){
+                  showDialogForPunchIn();
+                }else{
+                  showToast(
+                    message: "Please Contact to Admin",type: Toast.error);
+
+                }
               } else {
                 showToast(
                   message: "Please Wait...\nLocation Fetching",
@@ -361,7 +369,9 @@ class _AddAttendanceScreenState extends State<AddAttendanceScreen> {
                 0) {
               if (_attendanceManagementController.isLoadingGoogleMap.isFalse &&
                   _attendanceManagementController.hasErrorGoogleMap.isFalse) {
-                showDialogForPunchIn(isForPunchOut: true);
+                if(_attendanceManagementController.locationDataByCompany.isNotEmpty){
+                  showDialogForPunchIn(isForPunchOut: true);
+                }
               } else {
                 showToast(message: "Please Wait...\nLocation Fetching");
               }

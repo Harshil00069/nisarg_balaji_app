@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:ui';
+
 import 'package:battery_plus/battery_plus.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dio/dio.dart';
@@ -8,11 +9,11 @@ import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_face_detection_balaji_enterprise/src/api_manager/api_config_erp_dio.dart';
 import 'package:flutter_face_detection_balaji_enterprise/src/app_module/attendance_management_erp/model/insert_gps_treking_model.dart';
 import 'package:flutter_face_detection_balaji_enterprise/src/constant/database_helper.dart';
-import 'package:flutter_face_detection_balaji_enterprise/src/constant/permission_dialogs.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+
 import 'background_service_state.dart';
 
 // -----------------------------------------------------------------------------
@@ -28,7 +29,7 @@ const int outOfRangeNotificationId = 889;
 const int inRangeNotificationId = 890;
 
 final FlutterLocalNotificationsPlugin rangeNotifications =
-FlutterLocalNotificationsPlugin();
+    FlutterLocalNotificationsPlugin();
 
 /// Get a location and check the employee's admin range every 30 seconds.
 const Duration locationCheckInterval = Duration(seconds: 30);
@@ -62,18 +63,18 @@ Future<void> initializeService() async {
   );
 
   final FlutterLocalNotificationsPlugin notifications =
-  FlutterLocalNotificationsPlugin();
+      FlutterLocalNotificationsPlugin();
 
   await notifications
       .resolvePlatformSpecificImplementation<
-      AndroidFlutterLocalNotificationsPlugin>()
+          AndroidFlutterLocalNotificationsPlugin>()
       ?.createNotificationChannel(channel);
 
   await initializeRangeNotifications();
 
   await rangeNotifications
       .resolvePlatformSpecificImplementation<
-      AndroidFlutterLocalNotificationsPlugin>()
+          AndroidFlutterLocalNotificationsPlugin>()
       ?.requestNotificationsPermission();
 
   await service.configure(
@@ -95,7 +96,7 @@ Future<void> initializeService() async {
 
 Future<void> initializeRangeNotifications() async {
   const AndroidInitializationSettings androidSettings =
-  AndroidInitializationSettings('@mipmap/ic_launcher');
+      AndroidInitializationSettings('@mipmap/ic_launcher');
 
   const InitializationSettings settings = InitializationSettings(
     android: androidSettings,
@@ -103,8 +104,7 @@ Future<void> initializeRangeNotifications() async {
 
   await rangeNotifications.initialize(settings);
 
-  const AndroidNotificationChannel channel =
-  AndroidNotificationChannel(
+  const AndroidNotificationChannel channel = AndroidNotificationChannel(
     rangeNotificationChannelId,
     'Employee Range Alerts',
     description: 'Employee location range notifications',
@@ -113,7 +113,7 @@ Future<void> initializeRangeNotifications() async {
 
   await rangeNotifications
       .resolvePlatformSpecificImplementation<
-      AndroidFlutterLocalNotificationsPlugin>()
+          AndroidFlutterLocalNotificationsPlugin>()
       ?.createNotificationChannel(channel);
 }
 
@@ -123,7 +123,7 @@ Future<void> showRangeNotification({
 }) async {
   try {
     const AndroidNotificationDetails androidDetails =
-    AndroidNotificationDetails(
+        AndroidNotificationDetails(
       rangeNotificationChannelId,
       'Employee Range Alerts',
       channelDescription: 'Employee location range notifications',
@@ -136,7 +136,7 @@ Future<void> showRangeNotification({
     );
 
     const NotificationDetails details =
-    NotificationDetails(android: androidDetails);
+        NotificationDetails(android: androidDetails);
 
     String title;
     String message;
@@ -148,7 +148,8 @@ Future<void> showRangeNotification({
       notificationId = outOfRangeNotificationId;
     } else if (!isOutside && isOffline) {
       title = 'Range In Offline';
-      message = 'You have returned inside the assigned range. Internet is unavailable.';
+      message =
+          'You have returned inside the assigned range. Internet is unavailable.';
       notificationId = inRangeNotificationId;
     } else if (isOutside) {
       title = 'Out of Range';
@@ -171,7 +172,6 @@ Future<void> showRangeNotification({
   }
 }
 
-
 Future<void> checkAndShowRangeNotification({
   required bool isOutside,
   required bool isOffline,
@@ -179,8 +179,7 @@ Future<void> checkAndShowRangeNotification({
   bool shouldNotify = false;
 
   if (isOutside) {
-    if (_lastKnownOutside != true ||
-        _lastKnownOffline != isOffline) {
+    if (_lastKnownOutside != true || _lastKnownOffline != isOffline) {
       shouldNotify = true;
     }
   } else {
@@ -278,9 +277,9 @@ Future<bool> onStart(ServiceInstance serviceInstance) async {
 // -----------------------------------------------------------------------------
 
 Future<void> _processLocation(
-    ServiceInstance serviceInstance,
-    Timer timer,
-    ) async {
+  ServiceInstance serviceInstance,
+  Timer timer,
+) async {
   if (_isLocationProcessing) {
     if (kDebugMode) {
       debugPrint('Previous location check is still running; skipped.');
@@ -292,8 +291,7 @@ Future<void> _processLocation(
 
   try {
     // 1. Check attendance tracking
-    final trackingEnabled =
-    await BackgroundServiceState.isTrackingEnabled();
+    final trackingEnabled = await BackgroundServiceState.isTrackingEnabled();
 
     if (!trackingEnabled) {
       await _stopFromBackground(serviceInstance, timer);
@@ -301,8 +299,7 @@ Future<void> _processLocation(
     }
 
     // 2. Check GPS
-    final locationServiceEnabled =
-    await Geolocator.isLocationServiceEnabled();
+    final locationServiceEnabled = await Geolocator.isLocationServiceEnabled();
 
     if (!locationServiceEnabled) {
       checkGpsStatus = 0;
@@ -319,8 +316,7 @@ Future<void> _processLocation(
     }
 
     // 3. Check existing permission only
-    final LocationPermission permission =
-    await Geolocator.checkPermission();
+    final LocationPermission permission = await Geolocator.checkPermission();
 
     if (permission == LocationPermission.denied ||
         permission == LocationPermission.deniedForever ||
@@ -357,14 +353,12 @@ Future<void> _processLocation(
     // 5. Sync pending offline events
     final connectivity = await Connectivity().checkConnectivity();
 
-    final bool isOnline =
-    !connectivity.contains(ConnectivityResult.none);
+    final bool isOnline = !connectivity.contains(ConnectivityResult.none);
 
     if (isOnline) {
       await BackgroundLocationApi.syncPendingRangeEvents();
 
-      final pendingEvents =
-      await DatabaseHelper().getPendingRangeEvents();
+      final pendingEvents = await DatabaseHelper().getPendingRangeEvents();
 
       if (pendingEvents.isEmpty) {
         await _checkEmployeeRange(position);
@@ -381,7 +375,6 @@ Future<void> _processLocation(
         content: 'Checking employee range',
       );
     }
-
   } catch (e, stackTrace) {
     debugPrint('Background location process error: $e');
     debugPrintStack(stackTrace: stackTrace);
@@ -402,38 +395,38 @@ Future<void> _checkEmployeeRange(Position position) async {
     final String employeeId = user.empId;
 
     if (employeeId.isEmpty || employeeId == '0') {
-      if (kDebugMode) debugPrint('Range check skipped: employee ID is missing.');
+      if (kDebugMode)
+        debugPrint('Range check skipped: employee ID is missing.');
       return;
     }
 
     final List<LatLng> rangePoints =
-    await databaseHelper.fetchAdminRange(employeeRangeId);
+        await databaseHelper.fetchAdminRange(employeeRangeId);
 
     if (rangePoints.length < 3) {
       if (kDebugMode) {
-        debugPrint('Range check skipped: range $employeeRangeId has fewer than 3 points.');
+        debugPrint(
+            'Range check skipped: range $employeeRangeId has fewer than 3 points.');
       }
       return;
     }
 
     final LatLng currentLocation =
-    LatLng(position.latitude, position.longitude);
+        LatLng(position.latitude, position.longitude);
     final bool isInside = isInsidePolygon(currentLocation, rangePoints);
 
     // rangeId identifies the admin polygon. isUserOut is a separate status.
     const int rangeId = employeeRangeId;
     final int isUserOut = isInside ? 0 : 1;
 
-    final bool hasExitRecord =
-    await databaseHelper.hasActiveRangeExit(
+    final bool hasExitRecord = await databaseHelper.hasActiveRangeExit(
       employeeId: employeeId,
       rangeId: rangeId,
     );
 
     final connectivity = await Connectivity().checkConnectivity();
 
-    final bool isOffline =
-    connectivity.contains(ConnectivityResult.none);
+    final bool isOffline = connectivity.contains(ConnectivityResult.none);
 
     await checkAndShowRangeNotification(
       isOutside: !isInside,
@@ -443,20 +436,21 @@ Future<void> _checkEmployeeRange(Position position) async {
     // EMPLOYEE INSIDE
     if (isInside) {
       if (!hasExitRecord) {
-        if (kDebugMode) debugPrint('Employee is inside; no transition required.');
+        if (kDebugMode)
+          debugPrint('Employee is inside; no transition required.');
         return;
       }
 
       // true means the API succeeded OR the event was safely queued offline.
-      final bool savedOrSent =
-      await BackgroundLocationApi.processLocation(
+      final bool savedOrSent = await BackgroundLocationApi.processLocation(
         position: position,
         gpsStatus: 1,
         isUserOut: isUserOut,
       );
 
       if (!savedOrSent) {
-        debugPrint('Return event failed and was not queued. Exit state retained.');
+        debugPrint(
+            'Return event failed and was not queued. Exit state retained.');
         return;
       }
 
@@ -465,7 +459,10 @@ Future<void> _checkEmployeeRange(Position position) async {
         employeeId: employeeId,
         rangeId: rangeId,
       );
-      await showRangeNotification(isOutside: false,isOffline: isOffline,);
+      await showRangeNotification(
+        isOutside: false,
+        isOffline: isOffline,
+      );
       if (kDebugMode) {
         debugPrint('Return event sent/queued. Active exit state cleared.');
       }
@@ -475,7 +472,8 @@ Future<void> _checkEmployeeRange(Position position) async {
     // EMPLOYEE OUTSIDE
     if (hasExitRecord) {
       if (kDebugMode) {
-        debugPrint('Employee is still outside; exit record exists. API skipped.');
+        debugPrint(
+            'Employee is still outside; exit record exists. API skipped.');
       }
       return;
     }
@@ -488,8 +486,7 @@ Future<void> _checkEmployeeRange(Position position) async {
       longitude: position.longitude,
     );
 
-    final bool recordSaved =
-    await databaseHelper.hasActiveRangeExit(
+    final bool recordSaved = await databaseHelper.hasActiveRangeExit(
       employeeId: employeeId,
       rangeId: rangeId,
     );
@@ -499,8 +496,7 @@ Future<void> _checkEmployeeRange(Position position) async {
       return;
     }
 
-    final bool savedOrSent =
-    await BackgroundLocationApi.processLocation(
+    final bool savedOrSent = await BackgroundLocationApi.processLocation(
       position: position,
       gpsStatus: 1,
       isUserOut: isUserOut,
@@ -515,7 +511,10 @@ Future<void> _checkEmployeeRange(Position position) async {
       debugPrint('Exit event failed and was not queued; active state reset.');
       return;
     }
-    await showRangeNotification(isOutside: true,isOffline: isOffline,);
+    await showRangeNotification(
+      isOutside: true,
+      isOffline: isOffline,
+    );
     if (kDebugMode) {
       debugPrint('Exit event sent/queued. Active exit state retained.');
     }
@@ -539,10 +538,8 @@ bool isInsidePolygon(LatLng point, List<LatLng> polygon) {
     final double xj = polygon[j].latitude;
     final double yj = polygon[j].longitude;
 
-    final bool crosses =
-        ((yi > point.longitude) != (yj > point.longitude)) &&
-            (point.latitude <
-                (xj - xi) * (point.longitude - yi) / (yj - yi) + xi);
+    final bool crosses = ((yi > point.longitude) != (yj > point.longitude)) &&
+        (point.latitude < (xj - xi) * (point.longitude - yi) / (yj - yi) + xi);
 
     if (crosses) inside = !inside;
     j = i;
@@ -586,9 +583,9 @@ Future<void> _sendGpsDisabledHeartbeat() async {
 // -----------------------------------------------------------------------------
 
 Future<void> _stopFromBackground(
-    ServiceInstance serviceInstance,
-    Timer timer,
-    ) async {
+  ServiceInstance serviceInstance,
+  Timer timer,
+) async {
   timer.cancel();
   _locationTimer = null;
   _isLocationProcessing = false;
@@ -650,8 +647,7 @@ class BackgroundLocationApi {
       }
 
       final connectivity = await Connectivity().checkConnectivity();
-      final bool isOnline =
-      !connectivity.contains(ConnectivityResult.none);
+      final bool isOnline = !connectivity.contains(ConnectivityResult.none);
 
       if (isOnline) {
         final bool apiSuccess = await insertTrackDetailApi(
@@ -670,8 +666,7 @@ class BackgroundLocationApi {
         if (apiSuccess) return true;
 
         // If the online request fails, preserve the transition for retry.
-        final int queuedId =
-        await databaseHelper.insertPendingRangeEvent(
+        final int queuedId = await databaseHelper.insertPendingRangeEvent(
           employeeId: user.empId,
           rangeId: employeeRangeId,
           latitude: position.latitude,
@@ -691,8 +686,7 @@ class BackgroundLocationApi {
       }
 
       // Offline: save only the exit/return transition, not every GPS tick.
-      final int queuedId =
-      await databaseHelper.insertPendingRangeEvent(
+      final int queuedId = await databaseHelper.insertPendingRangeEvent(
         employeeId: user.empId,
         rangeId: employeeRangeId,
         latitude: position.latitude,
@@ -737,8 +731,7 @@ class BackgroundLocationApi {
       }
 
       for (final event in pendingEvents) {
-        final currentConnectivity =
-        await Connectivity().checkConnectivity();
+        final currentConnectivity = await Connectivity().checkConnectivity();
 
         if (currentConnectivity.contains(ConnectivityResult.none)) {
           debugPrint('Internet disconnected. Remaining events retained.');
@@ -759,7 +752,8 @@ class BackgroundLocationApi {
         );
 
         if (!success) {
-          debugPrint('Pending upload failed. This and later events remain queued.');
+          debugPrint(
+              'Pending upload failed. This and later events remain queued.');
           break;
         }
 
@@ -805,7 +799,7 @@ class BackgroundLocationApi {
     // final String now = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
 
     return insertTrackDetailApi(
-      token: user.token,
+        token: user.token,
         baseURL: user.baseUrl,
         companyId: user.companyId,
         latitude: '0.0',
@@ -814,23 +808,21 @@ class BackgroundLocationApi {
         batteryStatus: battery.toString(),
         address: 'Location Disabled',
         isUserOut: 2,
-        employeeId: user.empId
-    );
+        employeeId: user.empId);
   }
 
   /// Sends a GPS tracking detail to the existing endpoint.
-  static Future<bool> insertTrackDetailApi({
-    required String baseURL,
-    required String batteryStatus,
-    required String gpsStatus,
-    required String latitude,
-    required String longitude,
-    required String address,
-    required String employeeId,
-    required String token,
-    required String companyId,
-    required int isUserOut
-  }) async {
+  static Future<bool> insertTrackDetailApi(
+      {required String baseURL,
+      required String batteryStatus,
+      required String gpsStatus,
+      required String latitude,
+      required String longitude,
+      required String address,
+      required String employeeId,
+      required String token,
+      required String companyId,
+      required int isUserOut}) async {
     if (employeeId == '0') return false;
 
     try {
