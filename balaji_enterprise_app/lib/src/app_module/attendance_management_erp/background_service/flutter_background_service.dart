@@ -188,12 +188,12 @@ Future<void> checkAndShowRangeNotification({
     }
   }
 
-  if (shouldNotify) {
-    await showRangeNotification(
-      isOutside: isOutside,
-      isOffline: isOffline,
-    );
-  }
+  // if (shouldNotify) {
+  //   await showRangeNotification(
+  //     isOutside: isOutside,
+  //     isOffline: isOffline,
+  //   );
+  // }
 
   _lastKnownOutside = isOutside;
   _lastKnownOffline = isOffline;
@@ -459,10 +459,10 @@ Future<void> _checkEmployeeRange(Position position) async {
         employeeId: employeeId,
         rangeId: rangeId,
       );
-      await showRangeNotification(
-        isOutside: false,
-        isOffline: isOffline,
-      );
+      // await showRangeNotification(
+      //   isOutside: false,
+      //   isOffline: isOffline,
+      // );
       if (kDebugMode) {
         debugPrint('Return event sent/queued. Active exit state cleared.');
       }
@@ -511,10 +511,10 @@ Future<void> _checkEmployeeRange(Position position) async {
       debugPrint('Exit event failed and was not queued; active state reset.');
       return;
     }
-    await showRangeNotification(
-      isOutside: true,
-      isOffline: isOffline,
-    );
+    // await showRangeNotification(
+    //   isOutside: true,
+    //   isOffline: isOffline,
+    // );
     if (kDebugMode) {
       debugPrint('Exit event sent/queued. Active exit state retained.');
     }
